@@ -68,6 +68,10 @@ three-attempt limit; every attempt is metered, and invalid replies are saved in
 the run's `invalid_api_responses.jsonl`. This fixes a real writing SFT failure
 where a JSON object omitted `response`. Completed samples and conversation
 turns are reused when resuming the failed sample.
+An empty extracted `final_answer` remains valid input to scoring (zero score),
+and the original accepted interactivity range is preserved. These outcomes do
+not trigger retries or sample exclusion. All 80 completed writing/code answers
+were checked and were nonempty, so this boundary fix changes none of their scores.
 
 Rates (USD / million input, output tokens), checked 2026-10-13:
 
