@@ -189,6 +189,9 @@ difference must be retained when reporting those checkpoints.
 
 Long jobs should specify `--partition=general,clab`, GPU resources, time limit,
 and `--output=/net/scratch2/yichenzw/collabllm-runs/logs/NAME-%j.log`.
+On 2026-10-13, k003 exposed its L40S to `nvidia-smi` but both jobs 2147782 and
+2147784 failed CUDA initialization before evaluation (`No CUDA GPUs are
+available`). Subsequent evaluation jobs exclude this node with `--exclude=k003`.
 Record job ID, GPU/node, final state and exit code. Do not count an enqueued or
 running job as a completed experiment.
 
