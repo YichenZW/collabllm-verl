@@ -8,18 +8,39 @@ in `/net/scratch2/yichenzw/collabllm-runs`, outside the source tree.
 ## Scope and budget
 
 The user authorized Slurm experiments with **at most USD 40 in API credits**.
-`reproduction.budget` maintains one JSON ledger across processes, reserves a
-conservative request upper bound before dispatch, and settles from provider
-usage. Its cap is USD 38, including a USD 0.10 allowance for preflight probes.
-Timeouts keep their reservations; SDK retries are disabled. No cache discounts
+`reproduction.budget` uses one authenticated CPU coordinator to write a JSON
+ledger. GPU workers reserve a conservative request upper bound through RPC
+before dispatch, then settle from provider usage. Its cap is USD 38, including a
+USD 0.10 allowance for preflight probes. Unavailable accounting fails closed.
+Timeouts keep their reservations; provider SDK retries are disabled. Accounting
+RPC retries are idempotent and never repeat a provider call. No cache discounts
 are assumed. All new paid calls must use this guard. GPU compute is separate.
 
 Inspect costs with `.venv/bin/python -m reproduction.budget`.
-Do not delete or reset `../collabllm-runs/api_budget.json` or its lock directory.
-The initial SQLite ledger is retained for audit; after its workers stop, migrate
-it once with `python -m reproduction.budget --migrate-sqlite`. Migration preserves
-every charge and reservation. Atomic directory locks avoid the long cross-node
-SQLite lock stalls observed on this cluster's shared filesystem.
+Do not delete or reset `../collabllm-runs/api_budget.json`. Start the coordinator
+before paid experiments (one CPU, 512 MB, no GPU):
+
+```bash
+sbatch --parsable --partition=general,clab --nodes=1 --cpus-per-task=1 \
+  --mem=512M --time=12:00:00 --job-name=collabllm-budget \
+  --output=/net/scratch2/yichenzw/collabllm-runs/logs/budget-service-%j.log \
+  reproduction/budget_service.sh
+.venv/bin/python -c 'from reproduction.budget import rpc; print(rpc("health", {}))'
+```
+
+Wait for `BUDGET_COORDINATOR_READY` in the Slurm log before the health check.
+
+The service holds `budget-coordinator.lock` for its lifetime. Its private token
+is mode 0600; RPC sends reservation bounds and usage, never provider keys or
+conversation text. Stop its recorded Slurm job only after paid workers finish.
+Never steal an active coordinator lease. If a service is forcibly killed,
+verify its Slurm job is terminal before recovering a stale lease.
+
+Historical accounting was first migrated from SQLite to atomic directory locks.
+Expanded cross-node evaluation also exposed directory-lock contention. All
+three paid workers were stopped before handing the unchanged 382-record ledger
+to this coordinator. `api_budget.before_rpc.json` and `budget_handover.json`
+preserve the previous ledger, checksum, amounts, and terminal worker states.
 
 The budgeted evaluation targets 200 math examples and 10 writing/code examples
 per variant: Base, Proactive Base, released adapter, our SFT, and our Offline DPO.
@@ -192,6 +213,18 @@ running job as a completed experiment.
   an observed zero pass rate; it is distinct from an evaluation runtime error.
 * The additional concurrent report writer check passed (eight writers, 160
   atomic updates); binary score reports now retain Wilson 95% intervals.
+* The coordinator passed local concurrency, duplicate-RPC, invalid-usage,
+  authentication, and cap tests. Two real Slurm nodes submitted 64 reservations
+  to an isolated test ledger: exactly two fit its 25000 microUSD cap, totaling
+  20510 microUSD. These tests made no provider API calls.
+  A tiny metered GPT-4o-mini request from a GPU node also passed the complete
+  reserve/provider/settle path. The full updated regression suite passed all 11
+  checks (`logs/tests-coordinator.log`).
+* Expanded evaluation attempts 2147702/2147728/2147729 hit accounting lock
+  timeouts and were cancelled for the coordinator handover. Saved conversations
+  are resumed; failed attempt summaries and every cost reservation are retained.
+  A lock timeout could occur before dispatch or during settlement after a paid
+  response, so uncertain calls retain their full reservations.
 * Earlier smoke jobs: 2147629 encountered legitimate simulator early termination
   in a trivial test; 2147667 was cancelled to replace stalled SQLite accounting.
   These attempts and all conservative cost reservations remain in the audit.

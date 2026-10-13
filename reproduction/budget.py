@@ -11,6 +11,9 @@ import sqlite3
 import time
 import uuid
 import contextlib
+import threading
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
@@ -21,6 +24,36 @@ RATES = {"gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0),
          "claude-sonnet-4-5-20250929": (3.0, 15.0)}
 CAP_MICRO = 38_000_000  # User's $40 limit, leaving $2 of billing headroom.
 PRIOR_PROBES_MICRO = 100_000  # Conservative allowance for three tiny successful probes.
+LOCAL_LOCK = threading.RLock()
+
+def rpc(action, payload):
+    """Use one writer across GPU nodes; an unavailable service fails closed."""
+    config_path = RUNS / "budget_service.json"
+    if not config_path.exists():
+        raise RuntimeError("Budget coordinator is not configured; no paid request dispatched")
+    config = json.loads(config_path.read_text())
+    token = Path(config["token_file"]).read_text().strip()
+    request = urllib.request.Request(config["url"] + "/" + action,
+        data=json.dumps(payload).encode(), headers={"Content-Type": "application/json",
+        "Authorization": "Bearer " + token}, method="POST")
+    # Requests to a private cluster host must not use an inherited HTTP proxy.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for attempt in range(3):
+        try:
+            with opener.open(request, timeout=45) as response:
+                return json.load(response)["result"]
+        except urllib.error.HTTPError as exc:
+            body = json.loads(exc.read())
+            if body.get("type") == "BudgetExceeded":
+                raise BudgetExceeded(body["error"]) from None
+            raise RuntimeError("Budget coordinator rejected request: " + body.get("error", str(exc))) from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == 2:
+                raise RuntimeError("Budget coordinator unavailable; no additional paid call dispatched") from None
+            time.sleep(1)
+
+def is_coordinator():
+    return os.getenv("COLLABLLM_BUDGET_COORDINATOR") == "1"
 
 class BudgetExceeded(RuntimeError):
     budget_exceeded = True
@@ -30,8 +63,14 @@ def ledger_path(path=None):
 
 @contextlib.contextmanager
 def locked(path):
-    # Atomic mkdir works across Slurm nodes on the shared filesystem; SQLite's
-    # cross-node fcntl locks caused long stalls during the initial smoke test.
+    if is_coordinator() and path == ledger_path():
+        # The service holds its singleton lease for its entire lifetime.
+        # Only it may write the shared production ledger.
+        with LOCAL_LOCK:
+            yield
+        return
+    # Only isolated/local ledgers and historical migration use directory locks.
+    # Production calls use the coordinator's in-process lock above.
     path.parent.mkdir(parents=True, exist_ok=True)
     lock = path.with_suffix(path.suffix + ".lock")
     deadline = time.monotonic() + 120
@@ -41,7 +80,7 @@ def locked(path):
             break
         except FileExistsError:
             if time.monotonic() > deadline:
-                raise RuntimeError("API ledger lock timed out; no request dispatched")
+                raise RuntimeError("API ledger lock timed out; inspect reservations before resuming")
             time.sleep(0.05)
     try:
         yield
@@ -89,35 +128,57 @@ def rates(model):
     raise ValueError(f"Refusing unpriced API model: {model}")
 
 def reserve(model, messages, max_tokens, path=None):
-    inp, out = rates(model)
+    rates(model)  # Reject unknown models before any request, including RPC.
     # For text-only requests, UTF-8 bytes upper-bound token count, with extra
     # allowance for message framing and provider metadata. No tools/images used.
-    input_bound = len(json.dumps(messages, ensure_ascii=False).encode()) + 4096
-    amount = math.ceil(input_bound * inp + max_tokens * out)
+    input_bytes = len(json.dumps(messages, ensure_ascii=False).encode())
+    ident = str(uuid.uuid4())
+    if path is None and not is_coordinator():
+        return rpc("reserve", dict(model=model, input_bytes=input_bytes, max_tokens=max_tokens, ident=ident))
+    return reserve_bound(model, input_bytes, max_tokens, ident, path)
+
+def reserve_bound(model, input_bytes, max_tokens, ident, path=None):
+    inp, out = rates(model)
+    if type(input_bytes) is not int or input_bytes < 0 or type(max_tokens) is not int or max_tokens <= 0:
+        raise ValueError("Invalid reservation bounds")
+    amount = math.ceil((input_bytes + 4096) * inp + max_tokens * out)
     path = ledger_path(path)
     with locked(path):
         calls = read_ledger(path)
+        if ident in calls:
+            # A lost RPC acknowledgement must not create another reservation.
+            prior = calls[ident]
+            if (prior["model"] != model or prior.get("reserved_micro", prior["micro"]) != amount
+                    or prior.get("input_bytes") != input_bytes or prior.get("max_tokens") != max_tokens):
+                raise ValueError("Reservation identifier was reused with different bounds")
+            return ident
         used = sum(row["micro"] for row in calls.values())
         if used + amount > CAP_MICRO:
             raise BudgetExceeded(f"API cap reached: committed/reserved ${used/1e6:.4f}; "
                                  f"next reservation ${amount/1e6:.4f}; cap ${CAP_MICRO/1e6:.2f}")
-        ident = str(uuid.uuid4())
-        calls[ident] = dict(model=model, status="reserved", micro=amount,
+        calls[ident] = dict(model=model, status="reserved", micro=amount, reserved_micro=amount,
+                           input_bytes=input_bytes, max_tokens=max_tokens,
                            input_tokens=0, output_tokens=0, created=time.time())
         write_ledger(path, calls)
         return ident
 
 def settle(ident, model, usage, path=None):
     usage = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+    if path is None and not is_coordinator():
+        return rpc("settle", dict(ident=ident, model=model, usage=usage))
     inp, out = rates(model)
     n_in = usage.get("prompt_tokens", usage.get("input_tokens", 0))
     n_in += usage.get("cache_creation_input_tokens", 0) or 0
     n_in += usage.get("cache_read_input_tokens", 0) or 0
     n_out = usage.get("completion_tokens", usage.get("output_tokens", 0))
+    if type(n_in) is not int or type(n_out) is not int or n_in < 0 or n_out < 0:
+        raise ValueError("Invalid provider usage; reservation retained")
     amount = math.ceil(n_in * inp + n_out * out)
     path = ledger_path(path)
     with locked(path):
         calls = read_ledger(path)
+        if calls[ident]["model"] != model:
+            raise ValueError("Settlement model differs from reserved model")
         reserved = calls[ident]["micro"]
         if amount > reserved:
             raise RuntimeError("Reported usage exceeded reservation; stop and inspect pricing")
