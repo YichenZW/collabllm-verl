@@ -400,7 +400,15 @@ The jobs started on g008 and r001. Named nodes require their actual `general`
 partition rather than the `general,clab` partition list.
 The 20-code prefix has two reconstructed overlaps with archived training
 conversations; `statistical_analysis.json` also reports the non-overlap subset.
-Expanded results are not yet complete.
+These two expansions completed with exit 0:0: writing on A40 g008 in 31m47s,
+code on H200 NVL r001 in 28m23s. All eight groups have zero evaluation errors.
+The settled ledger is $36.046410 including old reservations. The measured cost
+of five extra writing tasks across four variants was $1.8744975. Reserving 30%
+above this observed rate plus $0.30 for request reservations permits three more
+paired tasks: the final writing target is n=18, using one worker and reuse from
+`eval-15`. `final_extension_plan.json` records the precommitted cost calculation;
+the expected extra cost is $1.1247 and the conservative projected total is
+$37.8085. Final writing results are not yet complete.
 
 ## veRL implementation review (2026-10-13)
 
@@ -470,6 +478,13 @@ using only saved completed samples. It records paired math outcomes and a code
 sensitivity analysis excluding tasks reconstructed as overlapping the archived
 training conversations. This subgroup does not replace the historical test
 split; it also cannot establish the public adapters' undocumented provenance.
+After refreshing the final report and releasing the experiment's Slurm jobs,
+`.venv/bin/python -m reproduction.audit_results --require-idle` checks every
+planned primary sample, recomputes character BLEU/token counts/ITR/aggregate
+means and SEMs, verifies saved code/math verdicts and byte-identical reused
+conversations, and checks the full training epochs/steps and budget. It writes
+`completion_audit.json`; the `resource_release_checked` field distinguishes
+the final audit from checks performed while experiments were still running.
 
 Reference: [paper](https://arxiv.org/pdf/2502.00640),
 [upstream](https://github.com/Wuyxin/collabllm).
