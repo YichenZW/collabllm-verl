@@ -11,13 +11,18 @@ import tiktoken
 
 from reproduction.common import BASE, RUNS, TASKS, LEGACY, atomic_json, digest
 
+VERSIONS = json.loads(Path(__file__).with_name("asset_versions.json").read_text())
+
+def pinned_dataset(repo, **kwargs):
+    return load_dataset(repo, revision=VERSIONS["datasets"][repo], **kwargs)
+
 def test_rows(name):
     if name == "math-hard":
-        raw = load_dataset("lighteval/MATH-Hard")["test"]
+        raw = pinned_dataset("lighteval/MATH-Hard")["test"]
         rows = [dict(prompt=r["problem"], completion=r["solution"],
                      metadata={"level": r.get("level"), "type": r.get("type")}) for r in raw]
     elif name == "medium":
-        raw = load_dataset("Kamaljp/medium_articles")["train"]
+        raw = pinned_dataset("Kamaljp/medium_articles")["train"]
         rows = sorted((r for r in raw if r.get("timestamp") is not None),
                       key=lambda r: r["timestamp"])
         n_test = int(len(rows) * 0.005)
@@ -28,7 +33,7 @@ def test_rows(name):
                 for r in rows[-n_test:]
                 if len(enc.encode(r["text"], disallowed_special=())) <= 512]
     else:
-        raw = load_dataset("bigcode/bigcodebench", split="v0.1.2")
+        raw = pinned_dataset("bigcode/bigcodebench", split="v0.1.2")
         n_train = int(len(raw) * 0.45)
         splits = ["train"] * n_train + ["test"] * (len(raw) - n_train)
         random.Random(42).shuffle(splits)
@@ -45,7 +50,7 @@ def test_rows(name):
 def download(repo, **kwargs):
     for attempt in range(4):
         try:
-            return snapshot_download(repo, **kwargs)
+            return snapshot_download(repo, revision=VERSIONS["models"][repo], **kwargs)
         except Exception:
             if attempt == 3:
                 raise

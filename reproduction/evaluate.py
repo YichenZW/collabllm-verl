@@ -92,7 +92,8 @@ def main():
                 usage = resp.usage.model_dump()
             with calls_lock:
                 with (out / "api_usage.jsonl").open("a") as f:
-                    f.write(json.dumps(dict(kind=kind, model=model, usage=usage)) + "\n")
+                    f.write(json.dumps(dict(kind=kind, model=model,
+                        resolved_model=getattr(resp, "model", model), usage=usage)) + "\n")
             try:
                 value = extract_json(text)
                 if isinstance(value, dict):

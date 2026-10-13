@@ -162,6 +162,11 @@ running job as a completed experiment.
   saved its model successfully, then its live-edited Bash launcher failed during
   the stage transition. Subsequent stages use an immutable script snapshot;
   no completed SFT work is discarded. See `slurm_jobs.json` for actual job states.
+  The same launcher transition affected 2147668 and 2147669 after successful
+  SFT completion. Math held-out loss is 0.66396; writing is 0.99515.
+* All 200 math / 100 writing / 600 code test rows were reconstructed offline
+  from the pinned dataset revisions and matched their saved SHA256 checksums.
+  `asset_versions.json` locks the exact model and dataset revisions.
 
 ## Outputs
 
@@ -172,6 +177,9 @@ measurements. Every summary states sample count, failures, means, and SEMs.
 `python -m reproduction.record_jobs` refreshes Slurm state/exit-code provenance.
 Full training checkpoints contain args, trainer state, training and held-out
 metrics, tokenizer, and LoRA weights.
+`MPLCONFIGDIR=../collabllm-runs/mpl-cache .venv-code/bin/python reproduction/plot_training.py`
+exports the measured SFT curves as PNG, SVG, and CSV in the artifact `figures`
+directory. The final small minibatch in each epoch can produce visible loss spikes.
 
 Reference: [paper](https://arxiv.org/pdf/2502.00640),
 [upstream](https://github.com/Wuyxin/collabllm).

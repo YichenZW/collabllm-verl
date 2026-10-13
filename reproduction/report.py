@@ -2,7 +2,7 @@
 import csv
 import json
 from reproduction.common import ROOT, RUNS, atomic_json
-from reproduction.budget import status
+from reproduction.budget import status, rates
 
 def main():
     rows = []
@@ -19,11 +19,23 @@ def main():
             continue
         task = manifest["dataset"]
         task_metric = {"math-hard": "accuracy", "medium": "bleu", "bigcodebench": "pass_rate"}[task]
+        api_cost = 0
+        usage_path = path.parent / "api_usage.jsonl"
+        if usage_path.exists():
+            for line in usage_path.read_text().splitlines():
+                call = json.loads(line)
+                usage = call["usage"]
+                inp, out = rates(call["model"])
+                n_in = usage.get("prompt_tokens", usage.get("input_tokens", 0))
+                n_in += (usage.get("cache_creation_input_tokens", 0) or 0) + (usage.get("cache_read_input_tokens", 0) or 0)
+                n_out = usage.get("completion_tokens", usage.get("output_tokens", 0))
+                api_cost += (n_in * inp + n_out * out) / 1e6
         row = dict(run=str(path.parent.relative_to(RUNS)), task=task, variant=manifest["variant"],
               n=summary["completed"], expected=summary["expected"], failed=summary["failed"],
               task_score_percent=100*metrics[task_metric]["mean"],
               task_score_sem_percent=100*metrics[task_metric]["sem"] if metrics[task_metric]["sem"] is not None else None,
               assistant_tokens_k=metrics["tokens_k"]["mean"], itr_percent=100*metrics["itr"]["mean"],
+              new_api_cost_usd=api_cost,
               user=manifest["user_model"], judge=manifest["judge"],
               paper_task_score_percent=None, paper_assistant_tokens_k=None, paper_itr_percent=None)
         if manifest["variant"] in names:

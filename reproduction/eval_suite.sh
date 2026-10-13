@@ -49,6 +49,6 @@ for variant in "${modes[@]}"; do
     fi
     python -m reproduction.evaluate --dataset "$task" --variant "$variant" \
         --model "$model" --local-url "http://127.0.0.1:$port/v1" --limit "$limit" \
-        --workers 6 --output "$output_root/$task/$variant" "${seed_args[@]}"
+        --workers 12 --output "$output_root/$task/$variant" "${seed_args[@]}"
 done
 python -m reproduction.report

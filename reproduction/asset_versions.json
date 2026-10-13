@@ -1,0 +1,14 @@
+{
+  "models": {
+    "meta-llama/Llama-3.1-8B-Instruct": "0e9e39f249a16976918f6564b8830bc894c89659",
+    "collabllm/CollabLLM-math-Llama-3.1-8B-Instruct": "8f116f6e790a61b7701f1b25ebb86eb2f11e253d",
+    "collabllm/CollabLLM-writing-Llama-3.1-8B-Instruct": "843d706daef8ad4fa3636eebbff1cf506b36ee35",
+    "collabllm/CollabLLM-code-Llama-3.1-8B-Instruct": "4de9e9b4061a520b40c34245b0b0f20a35c4197a"
+  },
+  "datasets": {
+    "Kamaljp/medium_articles": "40d1323b7313729f45eb45dc037cafda2a70f19d",
+    "lighteval/MATH-Hard": "cf0716b8bafa192bcb6b455b0679538787dc43f0",
+    "bigcode/bigcodebench": "b74c0d0bf70d2c0bc459be537895cca163007f1a"
+  },
+  "historical_code": "d573e49"
+}
