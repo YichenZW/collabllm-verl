@@ -9,6 +9,8 @@ import json
 import os
 import subprocess
 import shutil
+import socket
+import sys
 import threading
 import time
 from pathlib import Path
@@ -79,6 +81,20 @@ def main():
     # Generation/API workers can run concurrently, but benchmark timeouts
     # should not depend on twelve Python test processes sharing two Slurm CPUs.
     code_slot = threading.BoundedSemaphore(1)
+    code_validation_dir = RUNS / "code_validation"
+    if args.dataset == "bigcodebench":
+        # Shared-storage cold imports can differ across nodes. Validate here,
+        # before any paid calls, rather than trusting another node's cache.
+        job = os.getenv("SLURM_JOB_ID", f"local-{os.getpid()}")
+        code_validation_dir = RUNS / "code_validation_nodes" / f"{socket.gethostname()}-{job}"
+        atomic_json(out / "code_validation_manifest.json", dict(
+            hostname=socket.gethostname(), job=job, cache=str(code_validation_dir),
+            expected=len(records), test_sha256=digest(records)))
+        with (out / "canonical_validation.log").open("a") as log:
+            subprocess.run([sys.executable, "-m", "reproduction.validate_code",
+                "--limit", str(len(records)), "--workers", "1",
+                "--output", str(code_validation_dir)],
+                cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
 
     def request_json(prompt, model, kind):
         for attempt in range(3):
@@ -177,7 +193,7 @@ def main():
                                 input=json.dumps(dict(answer=candidate, test=gt["test"], entry_point=gt["entry_point"])),
                                 capture_output=True, text=True, timeout=300, env=env, check=True)
                     return json.loads(proc.stdout)
-                gold_path = RUNS / "code_validation" / f"{row['index']:04d}.json"
+                gold_path = code_validation_dir / f"{row['index']:04d}.json"
                 gold = json.loads(gold_path.read_text()) if gold_path.exists() else check(gt["answer"])
                 atomic_json(gold_path, gold)
                 if not gold["pass_rate"]:

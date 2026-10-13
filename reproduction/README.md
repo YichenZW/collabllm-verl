@@ -118,10 +118,15 @@ failure. Subprocess environments omit API credentials. Code test subprocesses
 run one at a time per evaluation job to avoid CPU contention changing benchmark
 timeout outcomes; model generation and paid API requests remain concurrent.
 After observing slow shared-filesystem imports on the new A100 node i001-ds,
-the first ten canonical solutions were rerun there and all passed. The separate
+the first twenty canonical solutions were rerun there and all passed. The separate
 cache is `code_validation_nodes/i001-ds-2149162`; log is
-`logs/code-canonical-2149162.log`. Use `validate_code --output NEW_DIRECTORY`
+`logs/code-canonical20-2149162.log`. Use `validate_code --output NEW_DIRECTORY`
 for such a node check without reusing or replacing the original validation cache.
+Code evaluation now runs this canonical preflight on its own node before any
+paid request, using a cache scoped to that Slurm job and reused across variants.
+It records `code_validation_manifest.json` and `canonical_validation.log` in
+each code evaluation directory. Scoring uses that validated cache. This leaves
+the canonical tests and candidate time limits unchanged.
 
 The upstream PPO entry point requires the legacy TRL API, whereas the primary
 environment needs modern TRL. PPO therefore has its own Python 3.11 environment:
@@ -324,8 +329,8 @@ running job as a completed experiment.
 
 ## Outputs
 
-Expanded writing and code evaluation now has 10 completed examples per model,
-with zero evaluation errors in all eight groups:
+Writing and code evaluation has 10 completed examples per model,
+with zero evaluation errors in all ten groups:
 
 | Model | Writing character BLEU (%) | Code pass rate (%) |
 |---|---:|---:|
@@ -333,6 +338,7 @@ with zero evaluation errors in all eight groups:
 | Proactive Base | 35.41 | 20.0 |
 | Released adapter | 37.65 | 20.0 |
 | Our SFT | 33.38 | 20.0 |
+| Our Offline DPO | 39.80 | 30.0 |
 
 These are small-sample results with the substituted judge, not the paper's
 full-test numbers. Code job 2147801 completed with exit 0:0. Writing job 2147800
@@ -367,14 +373,28 @@ Base (+3.5 percentage points; exact two-sided McNemar p=0.311). Relative to SFT,
 it gains 19 and loses 17 (+1 point; p=0.868). This single sampled evaluation
 does not establish a statistically significant accuracy improvement. These
 comparisons are descriptive and have no multiple-comparison adjustment.
-Writing/code DPO evaluations 2147730/2147731 failed during server startup,
+The initial writing/code DPO evaluations 2147730/2147731 failed during server startup,
 before evaluating samples: the server did not become healthy within 15 minutes.
 Logs show model import/initialization still in progress when the launcher
 terminated it. Retries 2149161/2149162 use a 30-minute readiness allowance,
-four CPUs, and different nodes, preserving the same evaluation protocol.
-At this checkpoint the shared ledger totals $30.368428, including conservative
+four CPUs, and different nodes, preserving the same evaluation protocol. Both
+retries completed with exit 0:0: writing on H200 o001 in 23m04s, code on A100-80GB
+i001-ds in 22m30s. Their model servers became healthy after about 17–18 minutes.
+Writing DPO scores are 39.80389% character BLEU, 1.5976k tokens, and 80% ITR;
+code DPO scores are 30% pass rate (3/10), 1.2505k tokens, and −20% ITR.
+At this checkpoint the shared ledger totals $31.719607, including conservative
 reservations and the preflight allowance, against the $38 guard and the user's
-$40 limit. Remaining writing/code evaluations are not yet completed.
+$40 limit. Jobs 2149236/2149237 expand the paired Base/Proactive/SFT/Offline DPO
+groups to 15 writing and 20 code samples, respectively; the released adapter
+remains at n=10. These jobs reuse all completed n=10 samples and use two workers.
+They initially requested the same nodes to reuse cached libraries. Scheduler
+estimates then showed waits of roughly one and five hours, so their pending
+requests were updated in place to allow `general,clab` and exclude k003/j001-ds.
+The jobs started on g008 and r001. Named nodes require their actual `general`
+partition rather than the `general,clab` partition list.
+The 20-code prefix has two reconstructed overlaps with archived training
+conversations; `statistical_analysis.json` also reports the non-overlap subset.
+Expanded results are not yet complete.
 
 ## veRL implementation review (2026-10-13)
 

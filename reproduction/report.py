@@ -78,7 +78,7 @@ def main():
                 "Archived task-specific judge prompts differ from paper v3 Appendix D.4; ITR scaling itself agrees with the appendix",
                 "Released adapter training stage undocumented; do not equate with Online DPO",
                 "Sample counts are explicit; pilot metrics are not full-test metrics",
-                "Historical code split ratios differ: reconstructed overlap 212/600; first10 have zero overlap with archived training conversations"]))
+                "Historical code split ratios differ: reconstructed overlap 212/600; first10 have zero overlap and first20 have two overlaps with archived training conversations; statistical_analysis.json reports the non-overlap sensitivity subset"]))
     if rows:
         with (RUNS / "results.csv").open("w") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
