@@ -11,10 +11,15 @@ limit=${2:?sample count required}
 variants=${3:-base,proactive,released,sft,offline_dpo}
 run_root=/net/scratch2/yichenzw/collabllm-runs
 output_root=${4:-$run_root/eval-$limit}
+seed_root=${5:-$run_root/pilot}
+workers=${6:-12}
 port=$((20000 + SLURM_JOB_ID % 30000))
 IFS=',' read -ra modes <<< "$variants"
 adapters=()
 for variant in "${modes[@]}"; do
+    if [ -n "${5:-}" ]; then
+        test -f "$seed_root/$task/$variant/manifest.json"
+    fi
     if [ "$variant" = sft ] || [ "$variant" = offline_dpo ]; then
         checkpoint="$run_root/checkpoints/$task/$variant"
         test -f "$checkpoint/adapter_model.safetensors"
@@ -44,11 +49,11 @@ for variant in "${modes[@]}"; do
     if [ "$variant" = released ]; then model="$task"; fi
     if [ "$variant" = sft ] || [ "$variant" = offline_dpo ]; then model="$task-$variant"; fi
     seed_args=()
-    if [ -f "$run_root/pilot/$task/$variant/manifest.json" ]; then
-        seed_args=(--seed-results "$run_root/pilot/$task/$variant")
+    if [ -f "$seed_root/$task/$variant/manifest.json" ]; then
+        seed_args=(--seed-results "$seed_root/$task/$variant")
     fi
     python -m reproduction.evaluate --dataset "$task" --variant "$variant" \
         --model "$model" --local-url "http://127.0.0.1:$port/v1" --limit "$limit" \
-        --workers 12 --output "$output_root/$task/$variant" "${seed_args[@]}"
+        --workers "$workers" --output "$output_root/$task/$variant" "${seed_args[@]}"
 done
 python -m reproduction.report

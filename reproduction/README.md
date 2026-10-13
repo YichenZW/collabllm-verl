@@ -201,11 +201,20 @@ which rejects `set -o pipefail`.
   separate from paper-scale Online DPO and is never entered in Table 1 results.
 * `reproduction/eval_pilot.sh`: one local vLLM GPU server and five paired examples
   per task/model (base, proactive, official released adapter).
+* `reproduction/eval_suite.sh DATASET LIMIT VARIANTS [OUTPUT_ROOT] [SEED_ROOT] [WORKERS]`:
+  evaluate the selected comma-separated variants, defaulting to 12 workers and
+  reuse from the pilot. A later expansion must pass the completed `eval-10`
+  directory as `SEED_ROOT` to reuse all ten samples; an explicit seed root
+  requires a manifest for every selected variant. The evaluator validates the
+  protocol and sample identities before reuse. Reduce workers near the budget
+  cap to limit simultaneous reservations. Expansion is decided only after the
+  outstanding core evaluations' costs are known.
 * `reproduction/train.sh DATASET sft|offline_dpo [MAX_STEPS]`: upstream trainers
   on original data, LoRA r=32/alpha=16/dropout=0.1, BF16, no quantization;
   SFT assistant-only loss, LR 1e-5/3 epochs; DPO LR 5e-6/8 epochs; batch 64.
 * `reproduction/ppo_smoke.sh`: one real legacy PPO rollout batch of two math
-  prompts, starting from our SFT adapter. One PPO epoch with minibatch size one
+  prompts, starting from our SFT adapter. Run `online_smoke.sh` first to prepare
+  the shared four-conversation diagnostic dataset. One PPO epoch with minibatch size one
   produces two optimizer updates. Rewards use three futures, four new messages,
   a 256-token output limit, and GPT-4o-mini simulation/judging. The reference
   disables LoRA. The diagnostic checks finite loss/rewards and changes in both
@@ -320,15 +329,25 @@ failed the last sample; after the schema fix, resume job 2147828 completed that
 sample and exited 0:0. The original failure remains in `failed_attempts` and
 the Slurm audit.
 
-Math Base has also completed all 200 historical test samples with zero errors:
-accuracy 9.5% (19/200; Wilson 95% interval 6.17–14.36%) and 3.33342k assistant
-tokens, versus Table 1's 11.0% and 3.40k. Historical-scale ITR is −66%, versus
-the paper's 44%; the archived scaling and changed judge are material comparison
-limits, not a reproduced interactivity result. Proactive Base also completed
-200/200 with zero errors: accuracy 12.5% (25/200), 2.02054k assistant tokens,
-and historical-scale ITR −32%, versus Table 1's 12.5%, 2.9k, and 46%.
-The remaining math variants and full Offline DPO training are still running
-and must be verified separately.
+All four initial math variants completed the same 200 historical test samples
+with zero evaluation errors (800 total). Job 2147799 completed on A100-80GB
+node j002-ds with exit 0:0 in 1h53m24s.
+
+| Model | Math accuracy (%) | Wilson 95% interval (%) | Assistant tokens (k) | Historical ITR (%) | Paper accuracy (%) |
+|---|---:|---:|---:|---:|---:|
+| Base | 9.5 | 6.17–14.36 | 3.33342 | −66 | 11.0 |
+| Proactive Base | 12.5 | 8.61–17.80 | 2.02054 | −32 | 12.5 |
+| Released adapter | 14.0 | 9.87–19.49 | 2.64232 | −47 | — |
+| Our SFT | 12.0 | 8.20–17.23 | 2.66557 | −46 | 13.5 |
+
+The archived ITR scaling and changed judge are material comparison limits:
+paper ITR is 44% / 46% / 58% for Base / Proactive / SFT. These measurements do
+not reproduce that interactivity result. The released adapter has no verified
+training-stage attribution, so no paper row is assigned to it.
+Full Offline DPO training and its dependent evaluations are still pending
+completion; they must be verified separately. At this checkpoint the shared
+ledger totals $26.157233, including conservative reservations and the preflight
+allowance, against the $38 guard and the user's $40 limit.
 
 `python -m reproduction.report` refreshes `../collabllm-runs/report.json`,
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run
