@@ -171,6 +171,13 @@ Known differences and interpretation limits:
 * Original ITR rescales 1–3 judge scores with `(score - 2.5) * 2`, which can be
   negative. Save this value, the raw score, and a separate `score/3` diagnostic.
   The latter is not a replacement for the reported historical metric.
+  Paper v3 Appendix D.4 explicitly specifies this same transform and says its
+  models averaged above 2.5. Our negative ITR therefore reflects lower raw
+  judge scores, not a different percentage conversion. The archived task-specific
+  judge templates also differ from v3's standalone ITR template (math jointly
+  judges accuracy and interactivity). This run follows the archived templates;
+  it is not prompt-identical to that appendix. The effects of this difference
+  and the substituted judge have not been isolated experimentally.
 * Public adapters' model cards do not identify their training stage. Label them
   `released`, not `Online DPO`, until provenance can be verified.
 * Proactive Base explicitly renders the paper's Appendix C.2 prompt. The
@@ -340,9 +347,10 @@ node j002-ds with exit 0:0 in 1h53m24s.
 | Released adapter | 14.0 | 9.87–19.49 | 2.64232 | −47 | — |
 | Our SFT | 12.0 | 8.20–17.23 | 2.66557 | −46 | 13.5 |
 
-The archived ITR scaling and changed judge are material comparison limits:
+The changed judge and archived judge-template differences are material comparison limits:
 paper ITR is 44% / 46% / 58% for Base / Proactive / SFT. These measurements do
-not reproduce that interactivity result. The released adapter has no verified
+not reproduce that interactivity result. The scaling formula itself agrees with
+paper v3 Appendix D.4. The released adapter has no verified
 training-stage attribution, so no paper row is assigned to it.
 Full Offline DPO training and its dependent evaluations are still pending
 completion; they must be verified separately. At this checkpoint the shared

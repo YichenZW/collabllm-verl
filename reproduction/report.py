@@ -75,6 +75,7 @@ def main():
     atomic_json(RUNS / "report.json", dict(api_budget=status(), measured_results=rows,
        primary_results=list(primary.values()), training=training,
        caveats=["Claude 3.5 retired; judge substituted with Claude Sonnet 4.5",
+                "Archived task-specific judge prompts differ from paper v3 Appendix D.4; ITR scaling itself agrees with the appendix",
                 "Released adapter training stage undocumented; do not equate with Online DPO",
                 "Sample counts are explicit; pilot metrics are not full-test metrics",
                 "Historical code split ratios differ: reconstructed overlap 212/600; first10 have zero overlap with archived training conversations"]))
