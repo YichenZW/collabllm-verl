@@ -243,6 +243,10 @@ running job as a completed experiment.
   A tiny metered GPT-4o-mini request from a GPU node also passed the complete
   reserve/provider/settle path. The full updated regression suite passed all 11
   checks (`logs/tests-coordinator.log`).
+* After the durable-storage and response-schema fixes, the complete suite
+  passed all 18 tests in 247.41 seconds (`logs/tests-schema-storage.log`), with
+  one Pydantic deprecation warning and no failures. This includes atomic
+  updates through the ledger symlink and malformed provider-response fields.
 * Expanded evaluation attempts 2147702/2147728/2147729 hit accounting lock
   timeouts and were cancelled for the coordinator handover. Saved conversations
   are resumed; failed attempt summaries and every cost reservation are retained.
