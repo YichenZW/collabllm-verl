@@ -287,8 +287,14 @@ full-test numbers. Code job 2147801 completed with exit 0:0. Writing job 2147800
 saved all three initial groups and nine SFT samples before a missing API field
 failed the last sample; after the schema fix, resume job 2147828 completed that
 sample and exited 0:0. The original failure remains in `failed_attempts` and
-the Slurm audit. The 200-example math evaluation and full Offline DPO training
-are still running; their completion must be verified separately.
+the Slurm audit.
+
+Math Base has also completed all 200 historical test samples with zero errors:
+accuracy 9.5% (19/200; Wilson 95% interval 6.17–14.36%) and 3.33342k assistant
+tokens, versus Table 1's 11.0% and 3.40k. Historical-scale ITR is −66%, versus
+the paper's 44%; the archived scaling and changed judge are material comparison
+limits, not a reproduced interactivity result. The other math variants and
+full Offline DPO training are still running and must be verified separately.
 
 `python -m reproduction.report` refreshes `../collabllm-runs/report.json`,
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run
