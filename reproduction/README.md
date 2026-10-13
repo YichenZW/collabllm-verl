@@ -42,6 +42,19 @@ three paid workers were stopped before handing the unchanged 382-record ledger
 to this coordinator. `api_budget.before_rpc.json` and `budget_handover.json`
 preserve the previous ledger, checksum, amounts, and terminal worker states.
 
+The coordinator then exposed a storage bottleneck: a handler on `j001-ds`
+blocked in Lustre's `osc_io_fsync_end`, delaying queued accounting requests.
+After stopping the three evaluations and gracefully draining the coordinator,
+all 492 records ($4.662409 including reservations) were moved byte-for-byte to
+`/home/yichenzw/.local/state/collabllm-table1-20261013/api_budget.json`.
+The artifact path `../collabllm-runs/api_budget.json` is now a symlink to that
+ledger. The code resolves it before atomic writes, preserving both the symlink
+and fsync durability on the destination filesystem. The destination directory
+is mode 0700. Home NFS fsync measured 0.8–1.3 ms on the same node.
+`api_budget.before_home_storage.json` and `budget_storage_handover.json` retain
+the exact previous bytes, checksum, cost, and terminal-job audit. Uncertain
+calls retain their full reservations; the migration does not reclaim charges.
+
 The budgeted evaluation targets 200 math examples and 10 writing/code examples
 per variant: Base, Proactive Base, released adapter, our SFT, and our Offline DPO.
 The first five pilot examples are reused without additional API calls. These
@@ -255,6 +268,14 @@ metrics, tokenizer, and LoRA weights.
 `MPLCONFIGDIR=../collabllm-runs/mpl-cache .venv-code/bin/python reproduction/plot_training.py`
 exports the measured SFT curves as PNG, SVG, and CSV in the artifact `figures`
 directory. The final small minibatch in each epoch can produce visible loss spikes.
+After refreshing the report,
+`MPLCONFIGDIR=../collabllm-runs/mpl-cache .venv-code/bin/python reproduction/plot_comparison.py`
+exports `figures/table1_comparison.png`, an SVG, and the underlying JSON data.
+The plot labels each measured sample count, leaves unevaluated models blank,
+and shows published values separately with the changed judge and historical
+ITR scale explicitly noted. Binary scores use Wilson 95% intervals; BLEU uses
+one SEM. Partial runs remain available in `results.csv` but do not replace
+completed runs in this comparison.
 
 Reference: [paper](https://arxiv.org/pdf/2502.00640),
 [upstream](https://github.com/Wuyxin/collabllm).

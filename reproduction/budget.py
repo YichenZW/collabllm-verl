@@ -59,7 +59,10 @@ class BudgetExceeded(RuntimeError):
     budget_exceeded = True
 
 def ledger_path(path=None):
-    return Path(path or RUNS / "api_budget.json")
+    # Resolve the production symlink before choosing the temporary file. This
+    # keeps both fsync and atomic replacement on the ledger's actual filesystem.
+    # The Slurm scratch Lustre filesystem can stall fsync for tens of seconds.
+    return Path(path) if path is not None else (RUNS / "api_budget.json").resolve()
 
 @contextlib.contextmanager
 def locked(path):

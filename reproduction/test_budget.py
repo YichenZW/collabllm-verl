@@ -30,6 +30,24 @@ def test_unknown_model_never_gets_a_reservation(tmp_path):
     with pytest.raises(ValueError, match="unpriced"):
         budget.reserve("unknown-model", [], 1, tmp_path / "budget.sqlite")
 
+def test_production_symlink_survives_atomic_updates(tmp_path, monkeypatch):
+    runs = tmp_path / "runs"
+    storage = tmp_path / "durable-storage"
+    runs.mkdir()
+    storage.mkdir()
+    destination = storage / "api_budget.json"
+    link = runs / "api_budget.json"
+    link.symlink_to(destination)
+    monkeypatch.setattr(budget, "RUNS", runs)
+    monkeypatch.setenv("COLLABLLM_BUDGET_COORDINATOR", "1")
+    monkeypatch.setattr(budget, "PRIOR_PROBES_MICRO", 0)
+    ident = budget.reserve("gpt-4o-mini", [], 1024)
+    budget.settle(ident, "gpt-4o-mini", dict(prompt_tokens=100, completion_tokens=10))
+    assert link.is_symlink()
+    assert budget.ledger_path() == destination
+    assert budget.read_ledger(link)[ident]["micro"] == 21
+    assert not (runs / "api_budget.json.tmp").exists()
+
 def test_reservation_retry_is_idempotent_and_checks_bounds(tmp_path, monkeypatch):
     path = tmp_path / "budget.json"
     monkeypatch.setattr(budget, "PRIOR_PROBES_MICRO", 0)
