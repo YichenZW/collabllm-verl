@@ -55,11 +55,12 @@ is mode 0700. Home NFS fsync measured 0.8–1.3 ms on the same node.
 the exact previous bytes, checksum, cost, and terminal-job audit. Uncertain
 calls retain their full reservations; the migration does not reclaim charges.
 
-The budgeted evaluation targets 200 math examples and 10 writing/code examples
-per variant: Base, Proactive Base, released adapter, our SFT, and our Offline DPO.
-The first five pilot examples are reused without additional API calls. These
-counts were chosen from measured pilot costs; the global guard still controls
-every request if a later example is more expensive. Full PPO and Online DPO
+The completed budgeted evaluation uses 200 math, 18 writing, and 20 code examples for
+Base, Proactive Base, our SFT, and our Offline DPO. The released adapter uses
+200 math and 10 writing/code examples because its training stage is undocumented.
+Expansions use the next tasks in the fixed seed-42 order and reuse completed
+conversations without additional API calls. Counts were chosen from observed
+costs before each expansion; the global guard controls every request. Full PPO and Online DPO
 training are outside this budgeted run; small optimizer diagnostics for both
 use the same budget guard. The public adapter is a separate row.
 
@@ -335,80 +336,86 @@ running job as a completed experiment.
 
 ## Outputs
 
-Writing and code evaluation has 10 completed examples per model,
-with zero evaluation errors in all ten groups:
+The completed evaluation contains **1,172 samples, with zero evaluation errors**:
+200 math examples per variant, 18 writing and 20 code examples for
+Base/Proactive/SFT/Offline DPO, and 10 writing/code examples for the released
+adapter. All three full SFT and Offline DPO training runs are saved; PPO and
+Online DPO were exercised only in optimizer diagnostics.
 
-| Model | Writing character BLEU (%) | Code pass rate (%) |
+Each cell gives **our score / paper Table 1 score**, in percent. Writing uses
+the original character-level BLEU; code uses test pass rate; math uses judged
+accuracy. These are budgeted measurements with a substituted judge, not an
+identical-protocol reproduction of the paper's full test sets.
+
+| Model | Writing BLEU (n=18) | Code pass rate (n=20) | Math accuracy (n=200) |
+|---|---:|---:|---:|
+| Base | 30.57 / 32.20 | 5.00 / 9.30 | 9.50 / 11.00 |
+| Proactive Base | 34.30 / 35.00 | 15.00 / 11.00 | 12.50 / 12.50 |
+| Our SFT | 34.61 / 35.20 | 15.00 / 11.70 | 12.00 / 13.50 |
+| Our Offline DPO | 37.97 / 36.40 | 15.00 / 12.30 | 13.00 / 15.50 |
+| Released adapter | 37.65 / — (n=10) | 20.00 / — (n=10) | 14.00 / — |
+
+The code DPO result is **3/20 = 15%**, superseding the earlier 3/10 = 30%
+pilot-sized result. Its Wilson 95% interval is 5.24–36.04%, so it does not
+establish an improvement over the paper's 12.3%. Two of these 20 tasks overlap
+with archived training conversations under the reconstructed split. Excluding
+both only for a sensitivity analysis gives DPO 3/18 = 16.67% (95% interval
+5.84–39.22%), Base 1/18, and Proactive/SFT 2/18. This does not replace the
+original test split or establish the released adapters' training provenance.
+
+Math DPO is 26/200 = 13.0% (Wilson 95% interval 9.03–18.37%), versus 15.5%
+in Table 1. On paired tasks it gains 21 correct answers and loses 14 relative
+to Base (+3.5 points; exact two-sided McNemar p=0.311). Relative to SFT it gains
+19 and loses 17 (+1 point; p=0.868). This single sampled evaluation does not
+establish a statistically significant accuracy gain. The comparisons are
+descriptive and have no multiple-comparison adjustment.
+
+Interactivity remains a material mismatch. The complete DPO measurements are:
+
+| Task | Assistant tokens (k), ours / paper | Historical ITR (%), ours / paper |
 |---|---:|---:|
-| Base | 31.57 | 10.0 |
-| Proactive Base | 35.41 | 20.0 |
-| Released adapter | 37.65 | 20.0 |
-| Our SFT | 33.38 | 20.0 |
-| Our Offline DPO | 39.80 | 30.0 |
+| Writing (n=18) | 1.671 / 2.150 | 55.56 / 82.00 |
+| Code (n=20) | 1.222 / 1.350 | -30.00 / 46.70 |
+| Math (n=200) | 1.921 / 2.400 | -21.00 / 50.00 |
 
-These are small-sample results with the substituted judge, not the paper's
-full-test numbers. Code job 2147801 completed with exit 0:0. Writing job 2147800
-saved all three initial groups and nine SFT samples before a missing API field
-failed the last sample; after the schema fix, resume job 2147828 completed that
-sample and exited 0:0. The original failure remains in `failed_attempts` and
-the Slurm audit.
+The original formula `2 * (raw_score - 2.5)` agrees with paper v3 Appendix D.4;
+negative ITR values are valid on that scale. The retired Claude 3.5 judge was
+replaced with Sonnet 4.5, and archived task-specific judge prompts differ from
+the paper appendix. Their effects have not been isolated. The released adapter
+has no verified training-stage attribution, so no paper row is assigned to it.
 
-All four initial math variants completed the same 200 historical test samples
-with zero evaluation errors (800 total). Job 2147799 completed on A100-80GB
-node j002-ds with exit 0:0 in 1h53m24s.
+All three SFT models finished 3 epochs / 24 steps. All three Offline DPO jobs
+finished 8 epochs with exit 0:0: math 264 steps (train/eval loss
+0.488876/0.551607), writing 224 steps (0.552259/0.623319), and code 304 steps
+(0.490992/0.540211). Full checkpoints and losses are saved. PPO and Online DPO
+have passed real optimizer diagnostics only; there are no full-training or
+Table 1 evaluation claims for those methods.
 
-| Model | Math accuracy (%) | Wilson 95% interval (%) | Assistant tokens (k) | Historical ITR (%) | Paper accuracy (%) |
-|---|---:|---:|---:|---:|---:|
-| Base | 9.5 | 6.17–14.36 | 3.33342 | −66 | 11.0 |
-| Proactive Base | 12.5 | 8.61–17.80 | 2.02054 | −32 | 12.5 |
-| Released adapter | 14.0 | 9.87–19.49 | 2.64232 | −47 | — |
-| Our SFT | 12.0 | 8.20–17.23 | 2.66557 | −46 | 13.5 |
+The final writing expansion to n=18 reused all n=15 conversations and cost
+$1.003673. `final_extension_plan.json` preserves the precommitted target and
+cost calculation; there was no selection based on the new scores. The final
+conservative API total is **$37.050083**, comprising $35.944692 in settled calls,
+$1.005391 retained for 35 historical uncertain calls, and a $0.10 preflight
+allowance. It remains below the $38 guard and the user's $40 limit. The immutable
+`api_budget.final.json` snapshot and `shutdown_audit.json` preserve accounting
+at shutdown; no uncertain reservations were reclaimed.
 
-The changed judge and archived judge-template differences are material comparison limits:
-paper ITR is 44% / 46% / 58% for Base / Proactive / SFT. These measurements do
-not reproduce that interactivity result. The scaling formula itself agrees with
-paper v3 Appendix D.4. The released adapter has no verified
-training-stage attribution, so no paper row is assigned to it.
-All three full Offline DPO training jobs completed with exit 0:0 and saved
-8-epoch checkpoints: math 264 steps (train/eval loss 0.488876/0.551607), writing
-224 steps (0.552259/0.623319), and code 304 steps (0.490992/0.540211).
-Math DPO evaluation 2147703 also completed with exit 0:0: 200/200, zero errors,
-13.0% accuracy versus the paper's 15.5%, 1.92110k assistant tokens, and ITR −21%.
-On the same 200 tasks, DPO gains 21 correct answers and loses 14 relative to
-Base (+3.5 percentage points; exact two-sided McNemar p=0.311). Relative to SFT,
-it gains 19 and loses 17 (+1 point; p=0.868). This single sampled evaluation
-does not establish a statistically significant accuracy improvement. These
-comparisons are descriptive and have no multiple-comparison adjustment.
-The initial writing/code DPO evaluations 2147730/2147731 failed during server startup,
-before evaluating samples: the server did not become healthy within 15 minutes.
-Logs show model import/initialization still in progress when the launcher
-terminated it. Retries 2149161/2149162 use a 30-minute readiness allowance,
-four CPUs, and different nodes, preserving the same evaluation protocol. Both
-retries completed with exit 0:0: writing on H200 o001 in 23m04s, code on A100-80GB
-i001-ds in 22m30s. Their model servers became healthy after about 17–18 minutes.
-Writing DPO scores are 39.80389% character BLEU, 1.5976k tokens, and 80% ITR;
-code DPO scores are 30% pass rate (3/10), 1.2505k tokens, and −20% ITR.
-At this checkpoint the shared ledger totals $31.719607, including conservative
-reservations and the preflight allowance, against the $38 guard and the user's
-$40 limit. Jobs 2149236/2149237 expand the paired Base/Proactive/SFT/Offline DPO
-groups to 15 writing and 20 code samples, respectively; the released adapter
-remains at n=10. These jobs reuse all completed n=10 samples and use two workers.
-They initially requested the same nodes to reuse cached libraries. Scheduler
-estimates then showed waits of roughly one and five hours, so their pending
-requests were updated in place to allow `general,clab` and exclude k003/j001-ds.
-The jobs started on g008 and r001. Named nodes require their actual `general`
-partition rather than the `general,clab` partition list.
-The 20-code prefix has two reconstructed overlaps with archived training
-conversations; `statistical_analysis.json` also reports the non-overlap subset.
-These two expansions completed with exit 0:0: writing on A40 g008 in 31m47s,
-code on H200 NVL r001 in 28m23s. All eight groups have zero evaluation errors.
-The settled ledger is $36.046410 including old reservations. The measured cost
-of five extra writing tasks across four variants was $1.8744975. Reserving 30%
-above this observed rate plus $0.30 for request reservations permits three more
-paired tasks: the final writing target is n=18, using one worker and reuse from
-`eval-15`. `final_extension_plan.json` records the precommitted cost calculation;
-the expected extra cost is $1.1247 and the conservative projected total is
-$37.8085. Final writing results are not yet complete.
+Final writing job **2149375** completed on **g008 / NVIDIA A40** with exit
+**0:0** in **42m17s**. Its exact submission command and log path are retained in
+`slurm_jobs.json` (`logs/eval-writing-18-2149375.log`). The budget coordinator
+**2147798** then exited **COMPLETED / 0:0** after 11h32m06s. All experiment jobs
+are terminal, and its endpoint and lease are removed. User/app CPU-host jobs
+were not modified. No further paid experiments are planned.
+
+Historical failures and recoveries remain in `slurm_jobs.json`, logs, and
+`failed_attempts`; failed Slurm wrappers are not relabeled successful. The SFT
+wrappers saved their full checkpoints before a shell-stage failure; independent
+DPO launches completed. A missing API response field was fixed with bounded,
+metered schema validation and resumed evaluation. Slow shared-storage model
+startup required a 30-minute health allowance. The final audit checks saved
+results, full training states, the unchanged budget ledger, and released
+resources; see `completion_audit.json`. `adapter_identity_audit.json` records
+a second SHA256 check of all six full trained adapters.
 
 ## veRL implementation review (2026-10-13)
 
@@ -428,7 +435,8 @@ also supports vLLM and parallel metric calls. Within the reviewed veRL agent
 loop, future branches for one candidate still execute via sequential awaits.
 
 Its example changes the experimental recipe: Qwen2.5-7B, GRPO, eight GPUs,
-eight candidates per prompt, three future branches, and 20 epochs. The judge
+eight candidates per prompt, three future branches, and 20 epochs. Eight GPUs
+is an example configuration, not an established minimum requirement. The judge
 defaults to GPT-4o-mini. ITR is now the mean of understanding/clarity,
 clarification, and suggestion scores on a 0–1 scale. This is not a direct
 replacement for the Llama-3.1-8B Table 1 protocol or its historical ITR.
