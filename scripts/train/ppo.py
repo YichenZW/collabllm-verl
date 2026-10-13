@@ -51,7 +51,7 @@ import trl
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 
 if version.parse(trl.__version__) > version.parse("0.10.1"):
-    raise RuntimeError(f"For this script, `trl` version {trl.__version__} is incompatible. Please install trl<-0.10.1 to run this script.")
+    raise RuntimeError(f"PPO requires the legacy TRL API (0.10.1); found {trl.__version__}. Use the dedicated .venv-ppo environment.")
 
 from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
 
@@ -60,6 +60,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    set_seed,
 )
 from collabllm.datasets.multiturn import MultiturnDataset
 from collabllm.reward import multiturn_aware_reward
@@ -113,6 +114,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--logging_steps", type=int, default=1)
     p.add_argument("--max_model_len", type=int, default=4096)
     p.add_argument("--max_metric_workers", type=int, default=4)
+    p.add_argument("--max_steps", type=int, default=-1)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--system_prompt_file", type=str)
     
     # Generation parameters
     p.add_argument("--top_p", type=float, default=0.9)
@@ -124,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use_lora", action="store_true", default=False)
     p.add_argument("--use_4bit", action="store_true", default=False)
     p.add_argument("--gpu_memory_utilization", type=float, default=0.6)
+    p.add_argument("--disable_vllm", action="store_true")
 
     # Tracking
     p.add_argument("--wandb_project", type=str)
@@ -156,6 +161,7 @@ def load_model_and_tokenizer(
     is_eval: bool = False,
     gpu_memory_utilization: float = 0.6,
     max_model_len: int = 8196,
+    disable_vllm: bool = False,
 ) -> Tuple[torch.nn.Module, AutoTokenizer]:
 
     if os.path.exists(model_name):
@@ -163,6 +169,8 @@ def load_model_and_tokenizer(
             model_name,
             device_map={"": device},
             quantization_config=bnb_cfg,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="sdpa",
             is_trainable=not is_eval
         )
     else:
@@ -172,15 +180,19 @@ def load_model_and_tokenizer(
             device_map={"": device},
             peft_config=lora_cfg,
             quantization_config=bnb_cfg,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="sdpa",
             is_trainable=not is_eval,
         )
     tok = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
 
-    tok.padding_side, tok.pad_token = ("left" if is_eval else "right"), tok.eos_token
+    tok.padding_side, tok.pad_token = "left", tok.eos_token
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total     = sum(p.numel() for p in model.parameters())
     print(f"Trainable params: {trainable:,}/{total:,} ({trainable/total:.2%})")
 
+    if disable_vllm:
+        return model, tok, None
     try:
         from vllm import LLM
 
@@ -216,9 +228,17 @@ def main() -> None:
     dist.init_process_group(backend='nccl', init_method=None)
     torch.cuda.set_device(local_rank)
     dist.barrier()
+    set_seed(args.seed)
+    if local_rank == 0:
+        with open(os.path.join(args.output_dir, "args.json"), "w") as f:
+            json.dump(vars(args), f, indent=2)
 
     # Dataset
-    ds = MultiturnDataset(args.dataset_repo).to_inputs_dataset(eval_ratio=0.)
+    source = MultiturnDataset(args.dataset_repo)
+    if args.system_prompt_file:
+        with open(args.system_prompt_file) as f:
+            source.sys_msg = [{"role": "system", "content": f.read()}]
+    ds = source.to_inputs_dataset(eval_ratio=0.)
 
     # Bits-and-bytes
     bnb_cfg = BitsAndBytesConfig(
@@ -232,6 +252,7 @@ def main() -> None:
     lora_cfg = LoraConfig(
         r=args.peft_r,
         lora_alpha=args.peft_alpha,
+        lora_dropout=args.peft_dropout,
         bias="none",
         task_type="CAUSAL_LM",
         init_lora_weights="gaussian",
@@ -247,7 +268,8 @@ def main() -> None:
         device=args.device,
         is_eval=False,
         gpu_memory_utilization=args.gpu_memory_utilization,
-        max_model_len=args.max_model_len
+        max_model_len=args.max_model_len,
+        disable_vllm=args.disable_vllm,
     )
 
     # Load reference model if specified
@@ -255,12 +277,14 @@ def main() -> None:
     if args.ref_model_name:
         ref_model, _, _ = load_model_and_tokenizer(
             args.ref_model_name,
+            args.base_model_name,
             bnb_cfg=bnb_cfg,
             lora_cfg=lora_cfg,
             device=args.device,
-            is_eval=False,
+            is_eval=True,
             gpu_memory_utilization=args.gpu_memory_utilization,
-            max_model_len=args.max_model_len
+            max_model_len=args.max_model_len,
+            disable_vllm=True,
         )
 
     # W&B
@@ -328,8 +352,7 @@ def main() -> None:
             str_prompt = tok.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
             multiturn_data = str_prompt_to_multiturn_data_map.get(compute_hash(str_prompt))
             if multiturn_data is None:
-                rewards.append(0.0)
-                continue
+                raise ValueError("PPO prompt did not match its source task")
                 
             chat_history = multiturn_data["prompt"] + [{"role": "assistant", "content": response}]
             
@@ -389,8 +412,35 @@ def main() -> None:
 
         return prompt_ids, completion_ids
 
+    def generate_hf(prompts):
+        prompt_ids, completion_ids = [], []
+        generation_kwargs = dict(do_sample=True,
+            temperature=args.assistant_generation_kwargs.get("temperature", args.temperature),
+            top_p=args.assistant_generation_kwargs.get("top_p", args.top_p),
+            max_new_tokens=args.assistant_generation_kwargs.get("max_new_tokens",
+                args.assistant_generation_kwargs.get("max_tokens", 256)),
+            no_repeat_ngram_size=args.no_repeat_ngram_size, pad_token_id=tok.pad_token_id)
+        for prompt in prompts:
+            query = tok.apply_chat_template(prompt, tokenize=True, add_generation_prompt=True,
+                return_tensors="pt").to(trainer.accelerator.device)
+            query = query[:, -args.max_model_len:]
+            with torch.no_grad():
+                output = model.pretrained_model.generate(input_ids=query,
+                    attention_mask=torch.ones_like(query), **generation_kwargs)
+            prompt_ids.append(query[0])
+            completion_ids.append(output[0, query.shape[1]:])
+        return prompt_ids, completion_ids
+
+    def save_checkpoint(path):
+        if trainer.accelerator.is_main_process:
+            os.makedirs(path, exist_ok=True)
+            # Save the value head and adapter locally without a Hub identity lookup.
+            trainer.accelerator.unwrap_model(trainer.model).save_pretrained(path)
+            tok.save_pretrained(path)
 
     total_steps = sum(1 for _ in tqdm(dataloader()))
+    if args.max_steps > 0:
+        total_steps = min(total_steps, args.max_steps)
     print(f'************** total steps = {total_steps} **************')
 
     step = 0
@@ -401,8 +451,9 @@ def main() -> None:
         prompts = batch["prompt"]
 
         # Generate responses
-        model.train()
-        prompt_ids, completion_ids = generate_vllm(trainer, model.pretrained_model, prompts)
+        model.eval()
+        prompt_ids, completion_ids = generate_vllm(trainer, model.pretrained_model, prompts) \
+            if vllm is not None else generate_hf(prompts)
         responses = tok.batch_decode(completion_ids, skip_special_tokens=True)
         
         # Compute rewards
@@ -423,21 +474,37 @@ def main() -> None:
         # Run PPO step
         torch.cuda.empty_cache()
 
+        model.train()
         stats = trainer.step(prompt_ids, completion_ids, rewards)
         trainer.log_stats(stats, batch, rewards, columns_to_log=["prompt", "responses", "rewards"])
+        scalars = {}
+        for key, value in stats.items():
+            value = value.detach().cpu().numpy() if torch.is_tensor(value) else np.asarray(value)
+            if value.size == 1:
+                number = float(value.item())
+                scalars[key] = number if np.isfinite(number) else None
+        loss = scalars.get("ppo/loss/total")
+        if loss is None or not np.isfinite([r.item() for r in rewards]).all():
+            raise RuntimeError("PPO produced non-finite loss or rewards")
+        record = dict(step=step, rewards=[r.item() for r in rewards], stats=scalars)
+        with open(os.path.join(args.output_dir, f"ppo_steps-rank{local_rank}.jsonl"), "a") as f:
+            f.write(json.dumps(record) + "\n")
         
         torch.cuda.empty_cache()
         
         # Save checkpoint
         if step % args.save_steps == 0:
-            trainer.save_pretrained(os.path.join(args.output_dir, f"step_{step}"))
-            tok.save_pretrained(os.path.join(args.output_dir, f"step_{step}"))
+            save_checkpoint(os.path.join(args.output_dir, f"step_{step}"))
         
         print(f"[Rank: {local_rank}] Step: {step}, Mean Reward: {np.mean([r.item() for r in rewards]):.4f}")
+        if args.max_steps > 0 and step >= args.max_steps:
+            break
 
     # Final save
-    trainer.save_pretrained(args.output_dir)
-    tok.save_pretrained(args.output_dir)
+    save_checkpoint(args.output_dir)
+    if trainer.accelerator.is_main_process:
+        with open(os.path.join(args.output_dir, "train_results.json"), "w") as f:
+            json.dump(dict(global_step=step, stats=scalars), f, indent=2)
 
     if args.push_to_hub and args.hf_org:
         repo = f"ppo-{args.dataset_repo.replace('/', '_')}"
@@ -446,6 +513,8 @@ def main() -> None:
 
     if args.wandb_project:
         wandb.finish()
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     load_dotenv(".env")

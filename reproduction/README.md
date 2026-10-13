@@ -59,8 +59,9 @@ The budgeted evaluation targets 200 math examples and 10 writing/code examples
 per variant: Base, Proactive Base, released adapter, our SFT, and our Offline DPO.
 The first five pilot examples are reused without additional API calls. These
 counts were chosen from measured pilot costs; the global guard still controls
-every request if a later example is more expensive. PPO and full Online DPO
-training are outside this budgeted run. The public adapter is a separate row.
+every request if a later example is more expensive. Full PPO and Online DPO
+training are outside this budgeted run; small optimizer diagnostics for both
+use the same budget guard. The public adapter is a separate row.
 
 Simulation, judging, and answer extraction validate the fields they actually
 consume, in addition to JSON syntax. A malformed response uses the existing
@@ -116,6 +117,21 @@ solution and aborts on an environment failure rather than assigning a model
 failure. Subprocess environments omit API credentials. Code test subprocesses
 run one at a time per evaluation job to avoid CPU contention changing benchmark
 timeout outcomes; model generation and paid API requests remain concurrent.
+
+The upstream PPO entry point requires the legacy TRL API, whereas the primary
+environment needs modern TRL. PPO therefore has its own Python 3.11 environment:
+
+```bash
+uv venv --python 3.11 .venv-ppo
+uv pip install --python .venv-ppo/bin/python -r reproduction/requirements-ppo.lock.txt
+uv pip check --python .venv-ppo/bin/python
+ENABLE_COLLABLLM_LOGGING=0 .venv-ppo/bin/python -m scripts.train.ppo --help
+```
+
+This environment pins TRL 0.10.1 and runs source modules from the repository
+directory. Do not install the root package with dependencies into it: the root
+package requires modern TRL. PPO uses BF16/SDPA and local Hugging Face generation
+with `--disable_vllm`. All 110 installed packages passed dependency checks.
 
 Training uses the archived, original 500-conversation datasets (2303 writing,
 2527 math, 2627 code preference rows), translated into the current loader schema.
@@ -188,6 +204,14 @@ which rejects `set -o pipefail`.
 * `reproduction/train.sh DATASET sft|offline_dpo [MAX_STEPS]`: upstream trainers
   on original data, LoRA r=32/alpha=16/dropout=0.1, BF16, no quantization;
   SFT assistant-only loss, LR 1e-5/3 epochs; DPO LR 5e-6/8 epochs; batch 64.
+* `reproduction/ppo_smoke.sh`: one real legacy PPO rollout batch of two math
+  prompts, starting from our SFT adapter. One PPO epoch with minibatch size one
+  produces two optimizer updates. Rewards use three futures, four new messages,
+  a 256-token output limit, and GPT-4o-mini simulation/judging. The reference
+  disables LoRA. The diagnostic checks finite loss/rewards and changes in both
+  adapter and value-head weights. Initialization uses seed 42; legacy
+  `PPOConfig` retains its default trainer/sampling seed 0. This diagnostic is
+  separate from a Table 1 PPO result.
   A positive MAX_STEPS writes a distinct smoke checkpoint.
 
 Full training uses historical sequence limits (1536 math/code, 2048 writing),
@@ -235,6 +259,13 @@ running job as a completed experiment.
   changed from the SFT initialization. See `online_smoke.json` and the saved
   preference rewards/checkpoints. This is an optimization diagnostic, not a
   Table 1 Online DPO measurement.
+* Job 2147921: real L40S PPO optimization passed on k002, `COMPLETED`, `0:0`,
+  in 16m14s. Two optimizer updates changed all 448 adapter tensors and both
+  value-head tensors. Total loss was 0.005921945; rewards were −0.3065 and
+  0.0378333. Its 18 successful GPT-4o-mini calls cost $0.0045936 at uncached
+  token rates and were included in the shared ledger. See `ppo_smoke.json`,
+  `checkpoints/math-hard/ppo-smoke-2147921`, and `logs/ppo-smoke-2147921.log`.
+  This verifies the training path, not paper-scale PPO performance.
 * Job 2147664: all 45 pilot samples completed with zero evaluation errors,
   `COMPLETED`, `0:0`, in 57m46s. A model answer failing a code unit test remains
   an observed zero pass rate; it is distinct from an evaluation runtime error.
@@ -293,8 +324,11 @@ Math Base has also completed all 200 historical test samples with zero errors:
 accuracy 9.5% (19/200; Wilson 95% interval 6.17–14.36%) and 3.33342k assistant
 tokens, versus Table 1's 11.0% and 3.40k. Historical-scale ITR is −66%, versus
 the paper's 44%; the archived scaling and changed judge are material comparison
-limits, not a reproduced interactivity result. The other math variants and
-full Offline DPO training are still running and must be verified separately.
+limits, not a reproduced interactivity result. Proactive Base also completed
+200/200 with zero errors: accuracy 12.5% (25/200), 2.02054k assistant tokens,
+and historical-scale ITR −32%, versus Table 1's 12.5%, 2.9k, and 46%.
+The remaining math variants and full Offline DPO training are still running
+and must be verified separately.
 
 `python -m reproduction.report` refreshes `../collabllm-runs/report.json`,
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run

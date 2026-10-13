@@ -6,5 +6,6 @@ wandb
 dist
 .venv/
 .venv-code/
+.venv-ppo/
 .pytest_cache/
 reproduction/results/
