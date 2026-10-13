@@ -190,10 +190,12 @@ Known differences and interpretation limits:
   and the substituted judge have not been isolated experimentally.
 * Public adapters' model cards do not identify their training stage. Label them
   `released`, not `Online DPO`, until provenance can be verified.
-* Proactive Base explicitly renders the paper's Appendix C.2 prompt. The
+* Proactive Base explicitly renders the paper v3 Appendix D.2 prompt. The
   archived local-HF generation branch ignores `prompt_method` (despite the
   launch configuration requesting it); this harness follows the paper's
   intended proactive baseline and makes the prompt effective.
+  The archived `base_collabllm` configuration also passes `collabllm`, while
+  its argument parser only accepts `none`/`proact`. It cannot be run unchanged.
 * Pilot sample counts are not the full Table 1 evaluation. Reports must state n.
 * The archived code generator uses an 80% training split, while its evaluator
   changes this to 45%. Mapping the saved conversation indices through the
@@ -255,6 +257,10 @@ from the saved SFT adapter and the reference forward pass disables the adapter
 assuming an SFT reference or silently changing the objective.
 The paper's SFT LR is used; the historical math checkpoint path mentions 2e-5
 although its launch script and the paper specify 1e-5.
+Some archived evaluation paths also select numbered checkpoint directories (for example,
+math SFT `checkpoint-4` and code DPO `checkpoint-37`). Those path strings alone
+do not establish the checkpoint used for Table 1. This run evaluates the saved
+final checkpoints after the reported three SFT and eight DPO epochs.
 The first full SFT runs (jobs 2147668/2147669/2147670) set the Trainer seed to 42
 after creating their LoRA adapters, so initial LoRA randomness was not fixed.
 Their saved checkpoints remain sufficient to repeat evaluation. Subsequent
@@ -438,6 +444,14 @@ measurements. Every summary states sample count, failures, means, and SEMs.
 Reports also include Wilson 95% intervals for binary accuracy/pass rate, so an
 all-fail five-example pilot is not presented as a zero-uncertainty estimate.
 `python -m reproduction.record_jobs` refreshes Slurm state/exit-code provenance.
+Its records include the GPU model read from each job's log, log path, working
+directory, and Slurm's raw `SubmitLine`. The last field preserves `|` inside
+GPU constraints; Slurm's stored command text may omit shell quoting, so it is
+audit evidence rather than a shell-escaped command to paste verbatim.
+`slurm_job_adjustments.json` records the later node/partition changes for the
+expanded evaluation jobs. The six full adapters have SHA256 identities in
+`trained_adapter_checksums.json`; `core_sample_audit.json` independently checks
+the 1,100 core samples against saved inputs, raw verdicts, and aggregate means.
 Full training checkpoints contain args, trainer state, training and held-out
 metrics, tokenizer, and LoRA weights.
 `MPLCONFIGDIR=../collabllm-runs/mpl-cache .venv-code/bin/python reproduction/plot_training.py`
