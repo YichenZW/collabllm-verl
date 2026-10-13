@@ -23,6 +23,7 @@ from openai import OpenAI
 from collabllm.utils.extract_json_reliable import extract_json
 from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, digest, legacy_prompt
 from reproduction.budget import metered_call, BudgetExceeded
+from reproduction.response_schema import validate_payload
 
 def main():
     p = argparse.ArgumentParser()
@@ -98,12 +99,13 @@ def main():
                     f.write(json.dumps(dict(kind=kind, model=model,
                         resolved_model=getattr(resp, "model", model), usage=usage)) + "\n")
             try:
-                value = extract_json(text)
-                if isinstance(value, dict):
-                    return value
-            except (ValueError, TypeError, KeyError):
-                pass
-        raise RuntimeError(f"{kind}: invalid JSON after 3 attempts")
+                return validate_payload(extract_json(text), kind, args.dataset)
+            except (ValueError, TypeError, KeyError) as exc:
+                with calls_lock:
+                    with (out / "invalid_api_responses.jsonl").open("a") as f:
+                        f.write(json.dumps(dict(kind=kind, model=model,
+                            attempt=attempt + 1, error=str(exc), response=text)) + "\n")
+        raise RuntimeError(f"{kind}: invalid JSON or response fields after 3 attempts")
 
     def run(row):
         target = out / "samples" / f"{row['index']:04d}.json"

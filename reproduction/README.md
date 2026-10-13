@@ -62,6 +62,13 @@ counts were chosen from measured pilot costs; the global guard still controls
 every request if a later example is more expensive. PPO and full Online DPO
 training are outside this budgeted run. The public adapter is a separate row.
 
+Simulation, judging, and answer extraction validate the fields they actually
+consume, in addition to JSON syntax. A malformed response uses the existing
+three-attempt limit; every attempt is metered, and invalid replies are saved in
+the run's `invalid_api_responses.jsonl`. This fixes a real writing SFT failure
+where a JSON object omitted `response`. Completed samples and conversation
+turns are reused when resuming the failed sample.
+
 Rates (USD / million input, output tokens), checked 2026-10-13:
 
 | Model | Input | Output | Source |
