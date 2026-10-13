@@ -255,7 +255,7 @@ class ChatSessionSimulator:
         )
 
         generation_kwargs = copy.deepcopy(generation_kwargs)
-        max_new = generation_kwargs.pop("max_tokens", 1024)
+        max_new = generation_kwargs.pop("max_tokens", generation_kwargs.pop("max_new_tokens", 1024))
         generation_kwargs.pop("model", None)  # not needed for HF pipeline
         prompts = [msgs for msgs in batch_messages]  # HF pipeline accepts list
         outputs = generator(
@@ -421,5 +421,4 @@ class ChatSessionSimulator:
     def _log_response(self, role: str, response: str) -> None:
         """Log the response if verbose mode is enabled and on main process."""
         logger.info(f"[rank {os.environ.get('RANK', 0)}]{role.capitalize()}: {response}")
-
 

@@ -48,6 +48,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    set_seed,
 )
 import torch.distributed as dist
 from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
@@ -96,6 +97,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use_lora", action="store_true", default=False)
     p.add_argument("--use_4bit", action="store_true", default=False)
 
+    p.add_argument("--system_prompt_file", type=str, default=None)
+    p.add_argument("--prepared_dataset", action="store_true")
+    p.add_argument("--truncation_mode", choices=["keep_start", "keep_end"], default="keep_start")
+    p.add_argument("--max_steps", type=int, default=-1)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--use_deepspeed", action="store_true")
+
     # Tracking
     p.add_argument("--wandb_project", type=str)
     p.add_argument("--wandb_entity",  type=str)
@@ -129,6 +137,8 @@ def load_model_and_tokenizer(
         base = AutoModelForCausalLM.from_pretrained(
             pc.base_model_name_or_path,
             device_map={"": device},
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            attn_implementation="sdpa",
             quantization_config=bnb_cfg,
             trust_remote_code=True,
         )
@@ -138,6 +148,8 @@ def load_model_and_tokenizer(
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map={"": device},
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            attn_implementation="sdpa",
             quantization_config=bnb_cfg,
             trust_remote_code=True,
         )
@@ -161,12 +173,24 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
 
     local_rank = int(os.environ['LOCAL_RANK'])
-    dist.init_process_group(backend='nccl', init_method=None)
     torch.cuda.set_device(local_rank)
-    dist.barrier()
+    dist.init_process_group(backend='nccl', init_method=None, device_id=torch.device(f"cuda:{local_rank}"))
+    dist.barrier(device_ids=[local_rank])
+    set_seed(args.seed)
 
     # Dataset
-    ds = MultiturnDataset(args.dataset_repo).to_dpo_dataset(eval_ratio=args.eval_ratio, minimum_gap=args.minimum_gap)
+    if args.prepared_dataset:
+        from datasets import load_from_disk
+        ds = load_from_disk(args.dataset_repo)
+    else:
+        wrapped_ds = MultiturnDataset(args.dataset_repo)
+        if args.system_prompt_file:
+            with open(args.system_prompt_file) as f:
+                wrapped_ds.sys_msg = [{"role": "system", "content": f.read()}]
+        ds = wrapped_ds.to_dpo_dataset(eval_ratio=args.eval_ratio, minimum_gap=args.minimum_gap)
+    if local_rank == 0:
+        with open(os.path.join(args.output_dir, "args.json"), "w") as f:
+            json.dump(vars(args), f, indent=2)
 
     # Bits-and-bytes
     bnb_cfg = BitsAndBytesConfig(
@@ -180,6 +204,7 @@ def main() -> None:
     lora_cfg = LoraConfig(
         r=args.peft_r,
         lora_alpha=args.peft_alpha,
+        lora_dropout=args.peft_dropout,
         bias="none",
         task_type="CAUSAL_LM",
         init_lora_weights="gaussian",
@@ -191,7 +216,7 @@ def main() -> None:
         args.model_name,
         bnb_cfg=bnb_cfg,
         lora_cfg=lora_cfg,
-        device=args.device,
+        device=f"cuda:{local_rank}" if args.device == "cuda" else args.device,
         is_eval=False,
     )
 
@@ -218,11 +243,11 @@ def main() -> None:
         loss_type="sigmoid",
         max_grad_norm=1.0,
         optim="adamw_torch",
-        report_to="wandb",
-        do_eval=True,
+        report_to="wandb" if args.wandb_project else "none",
+        do_eval=len(ds["eval"]) > 0,
         eval_steps=args.eval_steps, 
         save_strategy='epoch',
-        eval_strategy="steps",
+        eval_strategy="steps" if len(ds["eval"]) else "no",
         gradient_checkpointing=True,  
         lr_scheduler_type="cosine",
         metric_for_best_model="eval_loss",
@@ -234,11 +259,16 @@ def main() -> None:
         gradient_checkpointing_kwargs={'use_reentrant': False},
         max_length=args.max_new_tokens, 
         max_prompt_length=args.max_prompt_length, 
+        truncation_mode=args.truncation_mode,
         per_device_train_batch_size=args.per_device_train_batch_size,
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         run_name=args.output_dir,
         output_dir=args.output_dir,
-        deepspeed=ds_cfg, 
+        deepspeed=ds_cfg if args.use_deepspeed else None,
+        max_steps=args.max_steps,
+        seed=args.seed,
+        ddp_find_unused_parameters=False,
         fp16=not torch.cuda.is_bf16_supported(), 
         bf16=torch.cuda.is_bf16_supported(),
     )
@@ -255,25 +285,37 @@ def main() -> None:
         )
     
     def process(row):
-        reference = tok.apply_chat_template(row["prompt"] + [{'role': 'assistant', 'content': row["chosen"]}], tokenize=False)
-        row["prompt"] = tok.apply_chat_template(row["prompt"], tokenize=False, add_generation_prompt=True)
-        row["chosen"] = row["chosen"].strip() + tok.eos_token
-        row["rejected"] = row["rejected"].strip() +  tok.eos_token
-        assert row["prompt"] + row["chosen"] == reference
-        return row
+        if args.prepared_dataset:
+            # Match the historical Llama template without duplicating EOT:
+            # TRL 0.18 tokenization appends eos_token_id itself.
+            prompt = tok.apply_chat_template(row["prompt"], tokenize=False, add_generation_prompt=True)
+            completions = {}
+            for key in ["chosen", "rejected"]:
+                full = tok.apply_chat_template(row["prompt"] +
+                    [{"role": "assistant", "content": row[key].strip()}], tokenize=False)
+                if not full.startswith(prompt):
+                    raise ValueError("Chat template changed the prompt prefix")
+                completions[key] = full[len(prompt):].removesuffix(tok.eos_token)
+            return {**row, "prompt": prompt, **completions}
+        # Keep conversational data so TRL uses the model's actual end-of-turn token.
+        return {**row, "chosen": [{"role": "assistant", "content": row["chosen"]}],
+                "rejected": [{"role": "assistant", "content": row["rejected"]}]}
 
-    ds["train"] = ds["train"].map(process, load_from_cache_file=False)
-    ds["eval"] = ds["eval"].map(process, load_from_cache_file=False)
+    ds = ds.map(process, load_from_cache_file=False)
 
     trainer = DPOTrainer(
         model=model,
         train_dataset=ds["train"],
-        eval_dataset=ds["eval"],
+        eval_dataset=ds["eval"] if len(ds["eval"]) else None,
         processing_class=tok,
-        peft_config=lora_cfg,
+
         args=train_args,
     )
-    trainer.train(resume_from_checkpoint=args.resume_ckpt_dir)
+    result = trainer.train(resume_from_checkpoint=args.resume_ckpt_dir)
+    trainer.save_metrics("train", result.metrics)
+    trainer.save_state()
+    if len(ds["eval"]):
+        trainer.save_metrics("eval", trainer.evaluate())
 
     trainer.save_model(args.output_dir)
     tok.save_pretrained(args.output_dir)
@@ -285,6 +327,7 @@ def main() -> None:
 
     if args.wandb_project:
         wandb.finish()
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()

@@ -87,12 +87,15 @@ class InteractivityMetric(BaseMetric):
 
         logger.debug("Accuracy evaluator prompt:\n%s", eval_prompt)
 
+        interactivity = None
         for i in range(self.num_retries):
             try:
                 full_response = litellm.completion(
                     **self.llm_kwargs, messages=[{"role": "user", "content": eval_prompt}], num_retries=1
                 ).choices[0].message.content
             except Exception as e:
+                if getattr(e, "budget_exceeded", False):
+                    raise
                 import time
                 time.sleep(self.retry_after)
                 logger.error(f"[retry={i + 1}] Error during LLM call: {e}")
@@ -116,4 +119,6 @@ class InteractivityMetric(BaseMetric):
                 else:
                     logger.error(f"Keys {keys} do not match expected keys. Retrying...")
                     continue
+        if interactivity is None:
+            raise RuntimeError("interactivity judge did not return a valid score after retries")
         return interactivity

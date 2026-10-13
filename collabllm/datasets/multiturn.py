@@ -126,7 +126,8 @@ class MultiturnDataset:
             raw_list = data_or_local_dir_or_hf_repo_or_nested
         elif os.path.exists(str(data_or_local_dir_or_hf_repo_or_nested)):
             ds_dict = load_from_disk(str(data_or_local_dir_or_hf_repo_or_nested))  # type: ignore
-            raw_list = [dict(r) for r in ds_dict.flatten()]
+            splits = ds_dict.values() if isinstance(ds_dict, DatasetDict) else [ds_dict]
+            raw_list = [dict(r) for split in splits for r in split]
         else:
             ds_dict = load_dataset(str(data_or_local_dir_or_hf_repo_or_nested), trust_remote_code=True)  # type: ignore
             raw_list = [dict(r) for _, split in ds_dict.items() for r in split]
@@ -367,8 +368,7 @@ class MultiturnDataset:
         for r in self.data:
             key = (r["conv_id"], r["turn_id"])
             if key not in unique:
-                unique[key] = r
-            r['prompt'] = self.sys_msg + r["prompt"]
+                unique[key] = {**r, "prompt": self.sys_msg + r["prompt"]}
 
         keep_keys = [
             "prompt",

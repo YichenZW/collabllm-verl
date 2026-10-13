@@ -4,3 +4,7 @@ wandb
 .env
 *egg-info
 dist
+.venv/
+.venv-code/
+.pytest_cache/
+reproduction/results/

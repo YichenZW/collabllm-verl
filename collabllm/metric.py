@@ -97,7 +97,7 @@ class SingleTurnOrChatMetric:
         prompt = EXTRACT_MULTITURN_COMPLETION_PROMPT.format(
             extract_type=self.extract_type,
             chat_history=parse_messages(messages, strip_sys_prompt=True),
-            extraction_requirement=prefix_msg + metadata.get("extraction_requirement", ""),
+            extraction_requirement=prefix_msg + (metadata or {}).get("extraction_requirement", ""),
         )
 
         response = litellm.completion(
@@ -138,4 +138,3 @@ class SingleTurnOrChatMetric:
             return metric_cls
 
         return _decorator
-

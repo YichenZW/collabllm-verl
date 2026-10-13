@@ -115,12 +115,15 @@ class AccuracyMetric(BaseMetric):
         # 3) Call the judge LLM                                              #
         # ------------------------------------------------------------------ #
 
+        accuracy = None
         for i in range(self.num_retries):
             try:
                 full_response = litellm.completion(
                     **self.llm_kwargs, messages=[{"role": "user", "content": eval_prompt}], num_retries=self.num_retries
                 ).choices[0].message.content
             except Exception as e:
+                if getattr(e, "budget_exceeded", False):
+                    raise
                 import time
                 time.sleep(self.retry_after)
                 logger.error(f"[retry={i + 1}] Error during LLM call: {e}")
@@ -145,4 +148,6 @@ class AccuracyMetric(BaseMetric):
                     logger.error(f"Keys {keys} do not match expected keys. Retrying...")
                     continue
 
+        if accuracy is None:
+            raise RuntimeError("accuracy judge did not return a valid score after retries")
         return accuracy

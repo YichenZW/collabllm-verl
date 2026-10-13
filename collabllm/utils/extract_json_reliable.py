@@ -1,9 +1,16 @@
+import json
+
+
 def extract_json(s):
     json_start = s.index("{")
     json_end = s.rfind("}")
     s = s[json_start:json_end + 1]
 
     s = s.strip()
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
     result, pos = parse_value(s, 0)
     pos = skip_whitespace(s, pos)
     if pos != len(s):

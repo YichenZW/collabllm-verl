@@ -41,7 +41,6 @@ class LLMCollaborator(object):
             if len(messages) and messages[0]['role'] == 'system':
                 logger.info('System message detected.')
         else:
-            kwargs = {}
             prompt = PROACT_MODEL_PROMPT.format(
                 chat_history=parse_messages(messages, strip_sys_prompt=True),
                 max_new_tokens=self.llm_kwargs.get('max_new_tokens', 1024),
@@ -49,6 +48,7 @@ class LLMCollaborator(object):
             )
             messages = [{"role": "user", "content": prompt}]
 
+        response = None
         for _ in range(self.num_retries):
             full_response = litellm.completion(
                 **self.llm_kwargs,
@@ -75,5 +75,6 @@ class LLMCollaborator(object):
                 response = full_response
                 break
                 
+        if not isinstance(response, str):
+            raise RuntimeError("LLMCollaborator did not return a valid response after retries")
         return response.strip()
-

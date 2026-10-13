@@ -32,6 +32,7 @@ class UserSimulator(object):
         )
         messages = [{"role": "user", "content": prompt}]
 
+        response = None
         for _ in range(self.num_retries):
             full_response = litellm.completion(
                 **self.llm_kwargs,
@@ -54,4 +55,6 @@ class UserSimulator(object):
                     logger.error(f"[UserSimulator] Keys {keys} do not match expected keys. Retrying...")
                     continue
         
+        if not isinstance(response, str):
+            raise RuntimeError("UserSimulator did not return a valid response after retries")
         return response.strip()
