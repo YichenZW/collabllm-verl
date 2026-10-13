@@ -21,6 +21,13 @@ it once with `python -m reproduction.budget --migrate-sqlite`. Migration preserv
 every charge and reservation. Atomic directory locks avoid the long cross-node
 SQLite lock stalls observed on this cluster's shared filesystem.
 
+The budgeted evaluation targets 200 math examples and 10 writing/code examples
+per variant: Base, Proactive Base, released adapter, our SFT, and our Offline DPO.
+The first five pilot examples are reused without additional API calls. These
+counts were chosen from measured pilot costs; the global guard still controls
+every request if a later example is more expensive. PPO and full Online DPO
+training are outside this budgeted run. The public adapter is a separate row.
+
 Rates (USD / million input, output tokens), checked 2026-10-13:
 
 | Model | Input | Output | Source |
@@ -108,6 +115,13 @@ Known differences and interpretation limits:
   launch configuration requesting it); this harness follows the paper's
   intended proactive baseline and makes the prompt effective.
 * Pilot sample counts are not the full Table 1 evaluation. Reports must state n.
+* The archived code generator uses an 80% training split, while its evaluator
+  changes this to 45%. Mapping the saved conversation indices through the
+  generator's split gives 212 overlapping source tasks among the 600 historical
+  test samples. The first 10 sampled test tasks have zero overlap with all 500
+  archived training conversations. `reproduction.audit_code_split` records the
+  task-level mapping in `code_split_audit.json`. This reconstruction does not
+  establish the undocumented public adapters' training provenance.
 
 ## Slurm entry points
 
@@ -131,6 +145,11 @@ end; no validation-based model selection is applied. DPO uses TRL 0.18.1's
 prompt would otherwise consume the entire limit. The old TRL version handled
 truncation differently. The prepared-data DPO path renders the historical chat
 template and lets TRL append exactly one EOS terminator.
+The archived model loader quantizes its frozen backbone to NF4; these runs use
+BF16 without quantization. As in the archived PEFT DPO path, the policy starts
+from the saved SFT adapter and the reference forward pass disables the adapter
+(the reference is the base model). This is recorded explicitly rather than
+assuming an SFT reference or silently changing the objective.
 The paper's SFT LR is used; the historical math checkpoint path mentions 2e-5
 although its launch script and the paper specify 1e-5.
 The first full SFT runs (jobs 2147668/2147669/2147670) set the Trainer seed to 42

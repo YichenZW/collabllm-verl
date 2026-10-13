@@ -19,9 +19,10 @@ def main():
     install_litellm_guard()
     torch.manual_seed(42)
     assert torch.cuda.is_available(), "A Slurm GPU allocation is required"
-    model = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.bfloat16,
+    assets = json.loads((RUNS / "assets.json").read_text())
+    model = AutoModelForCausalLM.from_pretrained(assets["base"], torch_dtype=torch.bfloat16,
                 device_map="cuda", attn_implementation="sdpa")
-    tok = AutoTokenizer.from_pretrained(BASE)
+    tok = AutoTokenizer.from_pretrained(assets["base"])
     tok.pad_token = tok.eos_token
     tok.padding_side = "left"
     model.eval()
@@ -33,7 +34,7 @@ def main():
     base_response = tok.decode(output[0, inputs.shape[1]:], skip_special_tokens=True)
     assert base_response.strip()
     print("BASE_RESPONSE", base_response, flush=True)
-    model = PeftModel.from_pretrained(model, "collabllm/CollabLLM-math-Llama-3.1-8B-Instruct").eval()
+    model = PeftModel.from_pretrained(model, assets["math-hard"]["adapter"]).eval()
     common = dict(task_desc="question answering", single_turn_prompt="What is 17 plus 25?",
         local_model=model, local_tokenizer=tok,
         assistant_generation_kwargs=dict(model="collabllm-math", temperature=0.6, max_new_tokens=256),

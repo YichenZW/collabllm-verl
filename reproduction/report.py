@@ -63,7 +63,8 @@ def main():
        primary_results=list(primary.values()), training=training,
        caveats=["Claude 3.5 retired; judge substituted with Claude Sonnet 4.5",
                 "Released adapter training stage undocumented; do not equate with Online DPO",
-                "Sample counts are explicit; pilot metrics are not full-test metrics"]))
+                "Sample counts are explicit; pilot metrics are not full-test metrics",
+                "Historical code split ratios differ: reconstructed overlap 212/600; first10 have zero overlap with archived training conversations"]))
     if rows:
         with (RUNS / "results.csv").open("w") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
