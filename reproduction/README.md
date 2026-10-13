@@ -352,10 +352,54 @@ paper ITR is 44% / 46% / 58% for Base / Proactive / SFT. These measurements do
 not reproduce that interactivity result. The scaling formula itself agrees with
 paper v3 Appendix D.4. The released adapter has no verified
 training-stage attribution, so no paper row is assigned to it.
-Full Offline DPO training and its dependent evaluations are still pending
-completion; they must be verified separately. At this checkpoint the shared
-ledger totals $26.157233, including conservative reservations and the preflight
-allowance, against the $38 guard and the user's $40 limit.
+All three full Offline DPO training jobs completed with exit 0:0 and saved
+8-epoch checkpoints: math 264 steps (train/eval loss 0.488876/0.551607), writing
+224 steps (0.552259/0.623319), and code 304 steps (0.490992/0.540211).
+Math DPO evaluation 2147703 also completed with exit 0:0: 200/200, zero errors,
+13.0% accuracy versus the paper's 15.5%, 1.92110k assistant tokens, and ITR −21%.
+Writing/code DPO evaluations 2147730/2147731 failed during server startup,
+before evaluating samples: the server did not become healthy within 15 minutes.
+Logs show model import/initialization still in progress when the launcher
+terminated it. Retries 2149161/2149162 use a 30-minute readiness allowance,
+four CPUs, and different nodes, preserving the same evaluation protocol.
+At this checkpoint the shared ledger totals $30.368428, including conservative
+reservations and the preflight allowance, against the $38 guard and the user's
+$40 limit. Remaining writing/code evaluations are not yet completed.
+
+## veRL implementation review (2026-10-13)
+
+The author-contributed veRL recipe was merged in
+[PR 3574](https://github.com/verl-project/verl/pull/3574) on 2025-09-25 and later
+moved to [verl-recipe/collabllm](https://github.com/verl-project/verl-recipe/tree/main/collabllm).
+The reviewed recipe snapshot is `81d782765e6ddcd3d0371d64acee3a1d5645ef73`;
+its `REQUIRED_VERL.txt` identifies core commit
+`bcb638649a50e58494a8ddd92085ad1174f674b8`. Read-only source snapshots and a
+minimal grouping diagnostic are saved under `../collabllm-runs/verl-review`.
+No veRL training or paid veRL requests were run.
+
+The recipe integrates async vLLM rollouts, FSDP offload, dynamic token batching,
+and gradient checkpointing. These are useful for scaling online RL, but there
+is no measured speed comparison against our current setup. The original code
+also supports vLLM and parallel metric calls. Within the reviewed veRL agent
+loop, future branches for one candidate still execute via sequential awaits.
+
+Its example changes the experimental recipe: Qwen2.5-7B, GRPO, eight GPUs,
+eight candidates per prompt, three future branches, and 20 epochs. The judge
+defaults to GPT-4o-mini. ITR is now the mean of understanding/clarity,
+clarification, and suggestion scores on a 0–1 scale. This is not a direct
+replacement for the Llama-3.1-8B Table 1 protocol or its historical ITR.
+
+The current reward manager still assumes every sample has the first sample's
+future-branch count. Executing its two unmodified grouping assignments on
+branch counts [3,0] produces IndexError; [0,3] produces no grouped futures.
+The latter would enter the manager's all-zero reward branch. This is a local
+diagnostic, not an end-to-end veRL training test; see also upstream
+[issue 20](https://github.com/Wuyxin/collabllm/issues/20).
+Metric-import and exhausted API-retry failures also fall back to zero rewards.
+Migration requires fixing these cases and metering `litellm.acompletion`:
+our current LiteLLM guard wraps synchronous `completion` only. Preserve the
+current Table 1 runs; consider veRL separately for future multi-GPU online RL,
+with pinned dependencies, equivalent evaluation, and an async budget guard.
 
 `python -m reproduction.report` refreshes `../collabllm-runs/report.json`,
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run

@@ -34,7 +34,8 @@ trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || 
 python - "$port" "$server_pid" <<'PY'
 import os, sys, time, urllib.request
 port, pid = map(int, sys.argv[1:])
-for _ in range(180):
+# Cold Python/model imports on shared storage exceeded the old 15-minute limit.
+for _ in range(360):
     os.kill(pid, 0)
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=2):
