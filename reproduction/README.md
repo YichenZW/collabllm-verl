@@ -263,6 +263,24 @@ running job as a completed experiment.
 
 ## Outputs
 
+Expanded writing and code evaluation now has 10 completed examples per model,
+with zero evaluation errors in all eight groups:
+
+| Model | Writing character BLEU (%) | Code pass rate (%) |
+|---|---:|---:|
+| Base | 31.57 | 10.0 |
+| Proactive Base | 35.41 | 20.0 |
+| Released adapter | 37.65 | 20.0 |
+| Our SFT | 33.38 | 20.0 |
+
+These are small-sample results with the substituted judge, not the paper's
+full-test numbers. Code job 2147801 completed with exit 0:0. Writing job 2147800
+saved all three initial groups and nine SFT samples before a missing API field
+failed the last sample; after the schema fix, resume job 2147828 completed that
+sample and exited 0:0. The original failure remains in `failed_attempts` and
+the Slurm audit. The 200-example math evaluation and full Offline DPO training
+are still running; their completion must be verified separately.
+
 `python -m reproduction.report` refreshes `../collabllm-runs/report.json`,
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run
 per task/model/protocol). Reference Table 1 values are stored separately from
