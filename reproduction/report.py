@@ -1,8 +1,17 @@
 """Collect completed measured results; never fill missing cells with paper values."""
 import csv
 import json
+import math
 from reproduction.common import ROOT, RUNS, atomic_json
 from reproduction.budget import status, rates
+
+def wilson_interval(mean, n):
+    """95% binomial interval, including all-pass/all-fail small samples."""
+    z = 1.959963984540054
+    denom = 1 + z * z / n
+    center = (mean + z * z / (2 * n)) / denom
+    radius = z * math.sqrt(mean * (1 - mean) / n + z * z / (4 * n * n)) / denom
+    return max(0.0, center - radius), min(1.0, center + radius)
 
 def main():
     rows = []
@@ -19,6 +28,8 @@ def main():
             continue
         task = manifest["dataset"]
         task_metric = {"math-hard": "accuracy", "medium": "bleu", "bigcodebench": "pass_rate"}[task]
+        interval = wilson_interval(metrics[task_metric]["mean"], summary["completed"]) \
+            if task_metric in ["accuracy", "pass_rate"] else (None, None)
         api_cost = 0
         usage_path = path.parent / "api_usage.jsonl"
         if usage_path.exists():
@@ -34,6 +45,8 @@ def main():
               n=summary["completed"], expected=summary["expected"], failed=summary["failed"],
               task_score_percent=100*metrics[task_metric]["mean"],
               task_score_sem_percent=100*metrics[task_metric]["sem"] if metrics[task_metric]["sem"] is not None else None,
+              task_score_ci95_low_percent=100*interval[0] if interval[0] is not None else None,
+              task_score_ci95_high_percent=100*interval[1] if interval[1] is not None else None,
               assistant_tokens_k=metrics["tokens_k"]["mean"], itr_percent=100*metrics["itr"]["mean"],
               new_api_cost_usd=api_cost,
               user=manifest["user_model"], judge=manifest["judge"],
