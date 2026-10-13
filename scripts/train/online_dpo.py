@@ -34,7 +34,7 @@ ENABLE_COLLABLLM_LOGGING=0 LLM_USE_V1=1 VLLM_ENABLE_V1_MULTIPROCESSING=0 WANDB__
 """
 from __future__ import annotations
 
-import argparse, os, json
+import argparse, os, json, logging
 import torch.distributed as dist
 import wandb
 import hashlib
@@ -52,6 +52,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    set_seed,
 )
 from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
 from collabllm.datasets.multiturn import MultiturnDataset
@@ -59,6 +60,8 @@ from collabllm.reward import multiturn_aware_reward
 from collabllm.simulation import ChatSessionSimulator
 from examples.single_turn_ds import datasets_info
 from examples.metrics import *
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # CLI
@@ -108,6 +111,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use_4bit", action="store_true", default=False)
     p.add_argument("--use_lora", action="store_true", default=False)
     p.add_argument("--gpu_memory_utilization", type=float, default=0.6)
+    p.add_argument("--disable_vllm", action="store_true")
+    p.add_argument("--use_deepspeed", action="store_true")
+    p.add_argument("--max_steps", type=int, default=-1)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--system_prompt_file", type=str)
 
     # Tracking
     p.add_argument("--wandb_project", type=str)
@@ -137,13 +145,16 @@ def load_model_and_tokenizer(
     device: str = "cuda",
     is_eval: bool = False,
     gpu_memory_utilization: float = 0.6,
-    max_model_len: int = 8196
+    max_model_len: int = 8196,
+    disable_vllm: bool = False,
 ) -> Tuple[torch.nn.Module, AutoTokenizer]:
     try:
         pc = PeftConfig.from_pretrained(model_name)
         base = AutoModelForCausalLM.from_pretrained(
             pc.base_model_name_or_path,
             device_map={"": device},
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            attn_implementation="sdpa",
             quantization_config=bnb_cfg,
             trust_remote_code=True,
         )
@@ -155,6 +166,8 @@ def load_model_and_tokenizer(
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map={"": device},
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            attn_implementation="sdpa",
             quantization_config=bnb_cfg,
             trust_remote_code=True,
         )
@@ -168,6 +181,8 @@ def load_model_and_tokenizer(
     total     = sum(p.numel() for p in model.parameters())
     print(f"Trainable params: {trainable:,}/{total:,} ({trainable/total:.2%})")
 
+    if disable_vllm:
+        return model, tok, None
     try:
         from vllm import LLM
 
@@ -197,12 +212,20 @@ def main() -> None:
 
     # Imporant for initializing vllm base model per GPU
     local_rank = int(os.environ.get('LOCAL_RANK', '0'))
-    dist.init_process_group(backend='nccl', init_method=None)
     torch.cuda.set_device(local_rank)
-    dist.barrier()
+    dist.init_process_group(backend='nccl', init_method=None, device_id=torch.device(f"cuda:{local_rank}"))
+    dist.barrier(device_ids=[local_rank])
+    set_seed(args.seed)
+    if local_rank == 0:
+        with open(os.path.join(args.output_dir, "args.json"), "w") as f:
+            json.dump(vars(args), f, indent=2)
 
     # Dataset
-    ds = MultiturnDataset(args.dataset_repo).to_inputs_dataset(eval_ratio=0.)
+    source = MultiturnDataset(args.dataset_repo)
+    if args.system_prompt_file:
+        with open(args.system_prompt_file) as f:
+            source.sys_msg = [{"role": "system", "content": f.read()}]
+    ds = source.to_inputs_dataset(eval_ratio=0.)
 
     # Bits-and-bytes
     bnb_cfg = BitsAndBytesConfig(
@@ -216,6 +239,7 @@ def main() -> None:
     lora_cfg = LoraConfig(
         r=args.peft_r,
         lora_alpha=args.peft_alpha,
+        lora_dropout=args.peft_dropout,
         bias="none",
         task_type="CAUSAL_LM",
         init_lora_weights="gaussian",
@@ -227,10 +251,11 @@ def main() -> None:
         args.model_name,
         bnb_cfg=bnb_cfg,
         lora_cfg=lora_cfg,
-        device=args.device,
+        device=f"cuda:{local_rank}" if args.device == "cuda" else args.device,
         is_eval=False,
         gpu_memory_utilization=args.gpu_memory_utilization,
-        max_model_len=args.max_model_len
+        max_model_len=args.max_model_len,
+        disable_vllm=args.disable_vllm,
     )
 
     # DeepSpeed zero
@@ -256,7 +281,7 @@ def main() -> None:
         loss_type="sigmoid",
         max_grad_norm=1.0,
         optim="adamw_torch",
-        report_to="wandb",
+        report_to="wandb" if args.wandb_project else "none",
         do_eval=False,
         eval_steps=args.eval_steps, 
         save_strategy='steps',
@@ -270,12 +295,16 @@ def main() -> None:
         num_train_epochs=args.num_train_epochs,
         gradient_checkpointing_kwargs={'use_reentrant': False},
         max_new_tokens=args.max_new_tokens, 
+        temperature=args.assistant_generation_kwargs.get("temperature", 1.0),
         max_length=args.max_model_len,
         per_device_train_batch_size=args.per_device_train_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         run_name=args.output_dir,
         output_dir=args.output_dir,
-        deepspeed=ds_cfg, 
+        deepspeed=ds_cfg if args.use_deepspeed else None,
+        max_steps=args.max_steps,
+        seed=args.seed,
+        ddp_find_unused_parameters=False,
         use_vllm=False,
         fp16=not torch.cuda.is_bf16_supported(), 
         bf16=torch.cuda.is_bf16_supported(),
@@ -318,6 +347,8 @@ def main() -> None:
             rank_of_the_first_completion = []
             for prompt, completion_pair in zip(prompts, completion_pairs):
                 multiturn_data = str_prompt_to_multiturn_data_map.get(compute_hash(prompt))
+                if multiturn_data is None:
+                    raise ValueError("Online DPO prompt did not match its source task")
                 chat_histories = [
                     multiturn_data["prompt"] + 
                     [{"role": "assistant", "content": completion}] for completion in completion_pair
@@ -341,11 +372,17 @@ def main() -> None:
                         **collabllm_model_kwargs
                     )
                     pair_rewards.append(np.mean(reward_info["MR"]))
-                rank_of_the_first_completion.append(np.argmax(pair_rewards).item())
+                if not np.isfinite(pair_rewards).all():
+                    raise ValueError("Nonfinite online preference reward")
+                preferred = np.argmax(pair_rewards).item()
+                rank_of_the_first_completion.append(preferred)
+                with open(os.path.join(args.output_dir, f"online_rewards-rank{local_rank}.jsonl"), "a") as f:
+                    f.write(json.dumps(dict(prompt=prompt, completions=completion_pair,
+                        rewards=pair_rewards, preferred=preferred)) + "\n")
                 logger.info(
                     f"\n({local_rank=}) [Response 1] {completion_pair[0]}\n\n[Response 2] {completion_pair[1]}\nRewards: {pair_rewards}\n"
                 )
-            return torch.tensor(rank_of_the_first_completion)
+            return rank_of_the_first_completion
             
                 
     judge = MultiturnRewardJudge()  
@@ -402,7 +439,9 @@ def main() -> None:
     )
     trainer.args.use_vllm = True if vllm else False
 
-    trainer.train(resume_from_checkpoint=args.resume_ckpt_dir)
+    result = trainer.train(resume_from_checkpoint=args.resume_ckpt_dir)
+    trainer.save_metrics("train", result.metrics)
+    trainer.save_state()
 
     trainer.save_model(args.output_dir)
     tok.save_pretrained(args.output_dir)
@@ -414,6 +453,7 @@ def main() -> None:
 
     if args.wandb_project:
         wandb.finish()
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     load_dotenv(".env")

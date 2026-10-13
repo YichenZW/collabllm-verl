@@ -68,7 +68,9 @@ reports those 19 missing package-level requirements. The primary environment
 passes dependency checks, and all 50 first canonical code solutions pass in the
 evaluation environment. Each scored code sample also checks its canonical
 solution and aborts on an environment failure rather than assigning a model
-failure. Subprocess environments omit API credentials.
+failure. Subprocess environments omit API credentials. Code test subprocesses
+run one at a time per evaluation job to avoid CPU contention changing benchmark
+timeout outcomes; model generation and paid API requests remain concurrent.
 
 Training uses the archived, original 500-conversation datasets (2303 writing,
 2527 math, 2627 code preference rows), translated into the current loader schema.
@@ -130,6 +132,12 @@ which rejects `set -o pipefail`.
 
 * `reproduction/gpu_smoke.sh`: real 8B base/adapter inference, API user simulation,
   and upstream multiturn reward computation.
+* `reproduction/online_smoke.sh`: two actual Online DPO optimizer steps using a
+  four-conversation archived math dataset (two prompts processed), with three sampled futures and four new
+  messages per reward. This diagnostic uses GPT-4o-mini judging, 256 output
+  tokens, SFT initialization, and the modern TRL trainer's frozen initial-policy
+  reference. It verifies finite rewards/loss and changed adapter weights; it is
+  separate from paper-scale Online DPO and is never entered in Table 1 results.
 * `reproduction/eval_pilot.sh`: one local vLLM GPU server and five paired examples
   per task/model (base, proactive, official released adapter).
 * `reproduction/train.sh DATASET sft|offline_dpo [MAX_STEPS]`: upstream trainers
@@ -174,6 +182,16 @@ running job as a completed experiment.
 * Job 2147639: SFT and offline-DPO two-step training passed, `COMPLETED`, `0:0`.
 * Job 2147676: real A100-80GB base/adapter inference, user simulation, metrics,
   and three future MR samples passed, `COMPLETED`, `0:0`.
+* Job 2147738: real H200 two-step Online DPO passed, `COMPLETED`, `0:0`.
+  Mean loss 0.723679, finite gradients and rewards, and all 448 adapter tensors
+  changed from the SFT initialization. See `online_smoke.json` and the saved
+  preference rewards/checkpoints. This is an optimization diagnostic, not a
+  Table 1 Online DPO measurement.
+* Job 2147664: all 45 pilot samples completed with zero evaluation errors,
+  `COMPLETED`, `0:0`, in 57m46s. A model answer failing a code unit test remains
+  an observed zero pass rate; it is distinct from an evaluation runtime error.
+* The additional concurrent report writer check passed (eight writers, 160
+  atomic updates); binary score reports now retain Wilson 95% intervals.
 * Earlier smoke jobs: 2147629 encountered legitimate simulator early termination
   in a trivial test; 2147667 was cancelled to replace stalled SQLite accounting.
   These attempts and all conservative cost reservations remain in the audit.
@@ -193,6 +211,8 @@ running job as a completed experiment.
 `results.csv` (all measured runs), and `comparison.csv` (largest completed run
 per task/model/protocol). Reference Table 1 values are stored separately from
 measurements. Every summary states sample count, failures, means, and SEMs.
+Reports also include Wilson 95% intervals for binary accuracy/pass rate, so an
+all-fail five-example pilot is not presented as a zero-uncertainty estimate.
 `python -m reproduction.record_jobs` refreshes Slurm state/exit-code provenance.
 Full training checkpoints contain args, trainer state, training and held-out
 metrics, tokenizer, and LoRA weights.

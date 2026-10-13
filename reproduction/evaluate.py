@@ -75,6 +75,9 @@ def main():
                 shutil.copyfile(src, dst)
     enc = tiktoken.get_encoding("cl100k_base")
     calls_lock = threading.Lock()
+    # Generation/API workers can run concurrently, but benchmark timeouts
+    # should not depend on twelve Python test processes sharing two Slurm CPUs.
+    code_slot = threading.BoundedSemaphore(1)
 
     def request_json(prompt, model, kind):
         for attempt in range(3):
@@ -166,10 +169,11 @@ def main():
                        ["PATH", "LANG", "LC_ALL", "TZ"]}
                 env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="")
                 def check(candidate):
-                    proc = subprocess.run([str(ROOT / ".venv-code/bin/python"),
-                            str(ROOT / "reproduction/check_code.py")],
-                            input=json.dumps(dict(answer=candidate, test=gt["test"], entry_point=gt["entry_point"])),
-                            capture_output=True, text=True, timeout=300, env=env, check=True)
+                    with code_slot:
+                        proc = subprocess.run([str(ROOT / ".venv-code/bin/python"),
+                                str(ROOT / "reproduction/check_code.py")],
+                                input=json.dumps(dict(answer=candidate, test=gt["test"], entry_point=gt["entry_point"])),
+                                capture_output=True, text=True, timeout=300, env=env, check=True)
                     return json.loads(proc.stdout)
                 gold_path = RUNS / "code_validation" / f"{row['index']:04d}.json"
                 gold = json.loads(gold_path.read_text()) if gold_path.exists() else check(gt["answer"])
