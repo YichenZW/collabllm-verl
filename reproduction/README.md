@@ -117,6 +117,11 @@ solution and aborts on an environment failure rather than assigning a model
 failure. Subprocess environments omit API credentials. Code test subprocesses
 run one at a time per evaluation job to avoid CPU contention changing benchmark
 timeout outcomes; model generation and paid API requests remain concurrent.
+After observing slow shared-filesystem imports on the new A100 node i001-ds,
+the first ten canonical solutions were rerun there and all passed. The separate
+cache is `code_validation_nodes/i001-ds-2149162`; log is
+`logs/code-canonical-2149162.log`. Use `validate_code --output NEW_DIRECTORY`
+for such a node check without reusing or replacing the original validation cache.
 
 The upstream PPO entry point requires the legacy TRL API, whereas the primary
 environment needs modern TRL. PPO therefore has its own Python 3.11 environment:
@@ -357,6 +362,11 @@ All three full Offline DPO training jobs completed with exit 0:0 and saved
 224 steps (0.552259/0.623319), and code 304 steps (0.490992/0.540211).
 Math DPO evaluation 2147703 also completed with exit 0:0: 200/200, zero errors,
 13.0% accuracy versus the paper's 15.5%, 1.92110k assistant tokens, and ITR −21%.
+On the same 200 tasks, DPO gains 21 correct answers and loses 14 relative to
+Base (+3.5 percentage points; exact two-sided McNemar p=0.311). Relative to SFT,
+it gains 19 and loses 17 (+1 point; p=0.868). This single sampled evaluation
+does not establish a statistically significant accuracy improvement. These
+comparisons are descriptive and have no multiple-comparison adjustment.
 Writing/code DPO evaluations 2147730/2147731 failed during server startup,
 before evaluating samples: the server did not become healthy within 15 minutes.
 Logs show model import/initialization still in progress when the launcher
@@ -421,6 +431,11 @@ and shows published values separately with the changed judge and historical
 ITR scale explicitly noted. Binary scores use Wilson 95% intervals; BLEU uses
 one SEM. Partial runs remain available in `results.csv` but do not replace
 completed runs in this comparison.
+`python -m reproduction.analyze_results` writes `statistical_analysis.json`
+using only saved completed samples. It records paired math outcomes and a code
+sensitivity analysis excluding tasks reconstructed as overlapping the archived
+training conversations. This subgroup does not replace the historical test
+split; it also cannot establish the public adapters' undocumented provenance.
 
 Reference: [paper](https://arxiv.org/pdf/2502.00640),
 [upstream](https://github.com/Wuyxin/collabllm).
