@@ -1,5 +1,7 @@
 # CollabLLM Table 1 reproduction
 
+For the complete Chinese results summary, see [RESULTS.zh-CN.md](RESULTS.zh-CN.md).
+
 Workspace: `/net/scratch2/yichenzw/collabllm`; branch `reproduce/table1`.
 Upstream main: `7378aab`. Paper-era checkout: `../collabllm-paper-original`,
 commit `d573e49` (before the June 2025 refactor). Artifacts and Slurm logs live
