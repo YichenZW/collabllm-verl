@@ -86,6 +86,17 @@ def main():
             f"{row['itr_percent']:.2f} | {row['paper_task_score_percent']:.2f} |")
     if not data["primary_results"]:
         lines += ["", "尚无四个方法全部完成的配对结果。进行中的单项结果见 `report.json`。"]
+    paired_counts = {(row["task"], row["variant"]): row["n"] for row in data["primary_results"]}
+    individual = [row for row in data["individual_complete_results"]
+                  if row["n"] > paired_counts.get((row["task"], row["variant"]), 0)]
+    if individual:
+        lines += ["", "以下单项已完成，但相同样本规模的四方法对照尚未齐全，暂不作方法优劣结论。", "",
+            "| 任务 | 方法 | 已完成样本 | 任务分数 (%) | 助手输出 (k tokens) | ITR (%) |",
+            "|---|---|---:|---:|---:|---:|"]
+        for row in individual:
+            lines.append(f"| {row['task']} | {LABELS[row['variant']]} | {row['n']} | "
+                f"{row['task_score_percent']:.2f} | {row['assistant_tokens_k']:.3f} | "
+                f"{row['itr_percent']:.2f} |")
     lines += ["", "任务分数分别为 math accuracy、code pass rate、writing character BLEU。"
         "ITR 保留原代码 `(raw−2.5)×2`，因此可为负。论文数字使用不同底座和裁判，只作背景参考。", "",
         f"本轮已结算加保留金额：OpenAI ${budget['openai']['committed_usd']:.6f}，"
