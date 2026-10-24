@@ -13,3 +13,4 @@ reproduction/results/
 .venv
 .venv-code
 .venv-ppo
+.env.*
