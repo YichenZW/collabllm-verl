@@ -13,13 +13,15 @@ def main():
     parser.add_argument("--name", required=True)
     parser.add_argument("--time", default="12:00:00")
     parser.add_argument("--after", action="append", type=int, default=[])
-    parser.add_argument("--constraint", default="a40|a100|h100")
+    parser.add_argument("--constraint", default=None)
     parser.add_argument("--partition", choices=["general,clab", "dev"], default="general,clab")
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--mem", default="64G")
     parser.add_argument("script", choices=["qwen3_eval.sh", "qwen3_train.sh", "qwen3_task_train.sh", "qwen3_smoke.sh", "qwen3_inference_smoke.sh"])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.constraint is None:
+        args.constraint = "a100|h100" if args.script in ["qwen3_eval.sh", "qwen3_inference_smoke.sh"] else "a40|a100|h100"
     if not re.fullmatch(r"qwen4b-[a-z0-9-]+", args.name):
         raise ValueError("Use an experiment-specific job name")
     launch = RUNS / "runtime/launches" / uuid.uuid4().hex
