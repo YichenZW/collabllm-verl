@@ -18,7 +18,7 @@ def main():
     paper = json.loads((ROOT / "reproduction/paper_table1.json").read_text())
     names = {"base": "Base", "proactive": "Proactive Base", "sft": "SFT",
              "offline_dpo": "Offline DPO", "online_dpo": "Online DPO", "ppo": "PPO"}
-    for path in sorted(RUNS.glob("**/summary.json")):
+    for path in sorted(RUNS.glob("eval-*/*/*/summary.json")):
         manifest_path = path.parent / "manifest.json"
         if not manifest_path.exists():
             continue
@@ -52,6 +52,7 @@ def main():
               new_api_cost_usd=api_cost,
               underlying_model=manifest.get("underlying_model"),
               model_revision=manifest.get("model_revision"),
+              scoring_protocol=manifest.get("scoring_protocol", "omitted-json-prefix-v0"),
               user=manifest["user_model"], judge=manifest["judge"],
               paper_task_score_percent=None, paper_assistant_tokens_k=None, paper_itr_percent=None)
         if manifest["variant"] in names:

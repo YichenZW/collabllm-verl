@@ -55,7 +55,7 @@ def main():
         while time.monotonic() < deadline:
             for module, arguments in [
                 ("qwen3_batch", ["--roots", *map(str, roots), "--submit", "--max-requests", "64"]),
-                ("qwen3_finalize", ["--roots", *map(str, roots)]),
+                ("qwen3_finalize", ["--roots", *map(str, dict.fromkeys(roots + [RUNS / "eval-8"]))]),
                 ("qwen3_report", []), ("qwen3_status", []),
             ]:
                 if stopping:

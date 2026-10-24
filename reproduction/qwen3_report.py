@@ -6,6 +6,7 @@ from collections import defaultdict
 from reproduction import report
 from reproduction.common import ROOT, RUNS, atomic_json
 from reproduction.code_executor import harness_identity
+from reproduction.judge_protocol import VERSION
 
 VARIANTS = ("base", "proactive", "sft", "offline_dpo")
 TASKS = ("math-hard", "bigcodebench", "medium")
@@ -15,6 +16,8 @@ LABELS = dict(base="Base", proactive="Proactive Base", sft="SFT", offline_dpo="O
 def paired_results(rows):
     groups = defaultdict(dict)
     for row in rows:
+        if row.get("scoring_protocol") != VERSION:
+            continue
         if row["n"] != row["expected"] or row["failed"]:
             continue
         if row["task"] == "bigcodebench":
@@ -37,7 +40,7 @@ def paired_results(rows):
         for variant in VARIANTS:
             manifest = json.loads((RUNS / group[variant]["run"] / "manifest.json").read_text())
             signatures.append(tuple(manifest[k] for k in ["test_sha256", "underlying_model",
-                "model_revision", "enable_thinking", "generation_config", "seed", "protocol"]))
+                "model_revision", "enable_thinking", "generation_config", "seed", "protocol", "scoring_protocol"]))
         if len(set(signatures)) != 1:
             raise ValueError("Paired comparisons have different inputs or protocols")
         if task not in selected or group["base"]["n"] > selected[task]["base"]["n"]:
@@ -49,11 +52,13 @@ def main():
     report.main()
     path = RUNS / "report.json"
     data = json.loads(path.read_text())
-    data["individual_complete_results"] = data["primary_results"]
+    data["individual_complete_results"] = [row for row in data["primary_results"]
+                                           if row.get("scoring_protocol") == VERSION]
     data["primary_results"] = paired_results(data["measured_results"])
     data["model"] = json.loads((RUNS / "assets.json").read_text())
     data["plan"] = json.loads((RUNS / "plan.json").read_text())
     data["caveats"] = [
+        "An omitted Claude JSON-format wrapper was corrected; superseded scores are archived and all primary scores require the restored archived wrapper",
         "Qwen/Qwen3-4B non-thinking replaces paper Llama-3.1-8B-Instruct; paper values are context, not controlled comparisons",
         "Claude Sonnet 4.5 replaces retired Claude 3.5; the initial pilot is synchronous and expansions use Message Batches",
         "Archived task-specific judge prompts differ from paper v3 Appendix D.4; historical ITR scaling is preserved",
@@ -78,6 +83,8 @@ def main():
     budget = data["api_budget"]["providers"]
     lines = ["# Qwen3-4B CollabLLM 实验结果", "",
         "底座为 `Qwen/Qwen3-4B`，关闭 thinking。下表只列同一任务、相同题目上四个方法均已完成的结果。", "",
+        "已补回原版 Claude API 包装层的 JSON 格式指令。遗漏此指令时产生的旧分数已归档；"
+        "下表仅接受修正后的评分，对话和训练保持不变。", "",
         "| 任务 | 方法 | 样本数 | 任务分数 (%) | 助手输出 (k tokens) | ITR (%) | 论文任务分数 (%) |",
         "|---|---|---:|---:|---:|---:|---:|"]
     for row in data["primary_results"]:

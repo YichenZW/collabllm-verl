@@ -210,3 +210,22 @@ Completed SFT checkpoints can be evaluated before full DPO training finishes:
 by 32-sample generation using that pilot as its seed. Subsequent joint SFT/DPO
 stages depend on this stage and reuse its saved SFT results; sample counts and
 API work are unchanged. This only changes scheduling, not the protocol.
+
+A scoring audit found that the historical Claude API wrapper prepends the exact
+string `You are a helpful assistant designed to output in JSON format.` to every
+string prompt with `json_object=True`. The first Qwen evaluations omitted that
+wrapper instruction, although the task prompt bodies were unchanged. This is
+corrected by `judge_protocol.py` and verified against the archived callable.
+The archived GPT wrapper only prepends its instruction when the prompt contains
+no `json`; all three simulator prompts already contain it, so saved conversations
+and training remain valid. Judge temperature 0 and output limit 4096 are unchanged.
+
+All earlier scores are superseded, archived in `scoring_archive/omitted-json-prefix-v0`,
+and re-evaluated for every method with `d573e49-claude-json-prefix-v1`. Old in-flight
+batches are still settled and retained, but cannot publish to current sample
+fields. Exact scoring request hashes deduplicate identical dialogues copied into
+8/32/100/200-sample stages. API costs from both protocols count against the same
+budget. Original code execution still receives the extractor output directly;
+no selective fence stripping, escape repair, or reference-based edits are applied
+to improve scores. The wrapper correction does not guarantee syntactically valid
+code extraction from the replacement Claude model.

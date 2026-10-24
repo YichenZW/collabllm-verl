@@ -4,9 +4,11 @@ from types import SimpleNamespace as NS
 import pytest
 
 from reproduction import budget, qwen3_batch as batch
+from reproduction import judge_protocol
 
 
 def isolate(monkeypatch, path):
+    monkeypatch.setattr(judge_protocol, "RUNS", path.parent / "runs")
     reserve, settle = budget.reserve, budget.settle
     monkeypatch.setattr(budget, "reserve", lambda model, messages, maximum:
         reserve(model, messages, maximum, path))
@@ -66,3 +68,32 @@ def test_unknown_batch_submission_keeps_reservations(tmp_path, monkeypatch):
     assert any(r["status"] == "reserved" and r["micro"] > 0 for r in budget.read_ledger(ledger).values())
     with pytest.raises(RuntimeError, match="Unconfirmed batch"):
         batch.refresh(client, manifest)
+
+
+def test_old_batch_completion_never_overwrites_corrected_score(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    isolate(monkeypatch, ledger)
+    candidate = item(tmp_path)
+    manifest = tmp_path / "batch.json"
+    provider = NS(id="old-batch", processing_status="ended", model_dump=lambda **_: dict(id="old-batch"))
+    payload = dict(interactivity=dict(score=3), accuracy=dict(score=1))
+    message = NS(model=batch.MODEL, usage=NS(model_dump=lambda: dict(input_tokens=512, output_tokens=64)),
+                 content=[NS(type="text", text=json.dumps(payload))])
+    result = NS(custom_id="sample-1", result=NS(type="succeeded", message=message),
+                model_dump=lambda **_: dict(custom_id="sample-1", result="old-success"))
+    client = NS(messages=NS(batches=NS(create=lambda **_: provider, retrieve=lambda _: provider,
+                                     results=lambda _: [result])))
+    batch.submit(client, [candidate], manifest)
+    record = json.loads(manifest.read_text());record.pop("scoring_protocol")
+    manifest.write_text(json.dumps(record))
+    from pathlib import Path
+    path = Path(candidate["sample"])
+    state = json.loads(path.read_text())
+    state.update(judge=dict(interactivity=dict(score=2), accuracy=dict(score=0)),
+                 scoring_protocol=judge_protocol.VERSION)
+    path.write_text(json.dumps(state))
+    batch.refresh(client, manifest)
+    batch.refresh(client, manifest)
+    assert json.loads(path.read_text()) == state
+    assert json.loads(manifest.read_text())["items"][0]["parsed_payload"] == payload
+    assert len((path.parent.parent / "api_usage.jsonl").read_text().splitlines()) == 1

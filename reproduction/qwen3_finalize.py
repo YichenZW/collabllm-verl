@@ -7,10 +7,13 @@ from pathlib import Path
 
 from reproduction.common import ROOT, RUNS
 from reproduction.code_executor import harness_identity
+from reproduction.judge_protocol import VERSION
 
 
 def readiness(directory):
     protocol = json.loads((directory / "manifest.json").read_text())
+    if protocol.get("scoring_protocol") != VERSION:
+        raise ValueError("Obsolete scoring manifest; migrate before finalization")
     records = json.loads((RUNS / "data" / f"{protocol['dataset']}-test.json").read_text())
     if protocol["limit"]:
         records = records[:protocol["limit"]]
@@ -20,6 +23,8 @@ def readiness(directory):
         if not path.exists():
             continue
         sample = json.loads(path.read_text())
+        if sample.get("scoring_protocol") != VERSION:
+            continue
         if sample.get("completed") and (protocol["dataset"] != "bigcodebench" or
                                         sample.get("code_harness") == harness_identity()):
             completed += 1

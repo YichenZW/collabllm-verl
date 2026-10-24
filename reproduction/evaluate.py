@@ -29,6 +29,7 @@ from reproduction.budget import metered_call, BudgetExceeded
 from reproduction.response_schema import validate_payload
 from reproduction.code_executor import harness_identity, run_check
 from reproduction.code_reference_policy import reviewed_reference_issue
+from reproduction.judge_protocol import VERSION, wrap_json_prompt, score_params, load_score, save_score, apply_score
 
 def main():
     p = argparse.ArgumentParser()
@@ -63,13 +64,14 @@ def main():
             "reproduction/budget.py", "reproduction/response_schema.py", "reproduction/check_code.py",
             "reproduction/code_executor.py", "reproduction/code_runtime.py", "reproduction/code_network.py",
             "reproduction/code_dependencies.py", "reproduction/code_reference_policy.py",
-            "reproduction/code_reference_issues.json")))
+            "reproduction/code_reference_issues.json", "reproduction/judge_protocol.py")))
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
     assets = json.loads((RUNS / "assets.json").read_text())
     manifest.update(underlying_model=assets["model_id"], model_revision=assets["revision"],
-                    enable_thinking=assets["enable_thinking"], generation_config="vllm")
+                    enable_thinking=assets["enable_thinking"], generation_config="vllm",
+                    scoring_protocol=VERSION)
     manifest.pop("local_url")  # Endpoint location does not change experimental identity.
     manifest.pop("seed_results")
     manifest.pop("phase")  # Execution phase does not change the experimental protocol.
@@ -83,6 +85,7 @@ def main():
         identity = ["dataset", "variant", "model", "judge", "user_model", "seed", "protocol",
                     "judge_changed_from_paper", "itr_scaling", "bleu", "underlying_model",
                     "model_revision", "enable_thinking", "generation_config"]
+        identity.append("scoring_protocol")
         if any(prior[k] != manifest[k] for k in identity):
             raise ValueError("Seed results used a different experimental protocol")
         for row in records:
@@ -114,6 +117,7 @@ def main():
                 cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
 
     def request_json(prompt, model, kind):
+        prompt = wrap_json_prompt(prompt, model)
         for attempt in range(3):
             if model.startswith("claude"):
                 resp = metered_call(judge_api.messages.create, model=model, max_tokens=4096, temperature=0,
@@ -129,10 +133,16 @@ def main():
                 usage = resp.usage.model_dump()
             with calls_lock:
                 with (out / "api_usage.jsonl").open("a") as f:
-                    f.write(json.dumps(dict(kind=kind, model=model,
+                    f.write(json.dumps(dict(kind=kind, model=model, scoring_protocol=VERSION,
                         resolved_model=getattr(resp, "model", model), usage=usage)) + "\n")
             try:
-                return validate_payload(extract_json(text), kind, args.dataset)
+                payload = validate_payload(extract_json(text), kind, args.dataset)
+                if model.startswith("claude"):
+                    params = dict(model=model, max_tokens=4096, temperature=0,
+                                  messages=[dict(role="user", content=prompt)])
+                    save_score(params, payload, dict(transport="synchronous", model=resp.model,
+                        usage=usage, raw_response=text, source_directory=str(out)))
+                return payload
             except (ValueError, TypeError, KeyError) as exc:
                 with calls_lock:
                     with (out / "invalid_api_responses.jsonl").open("a") as f:
@@ -145,6 +155,8 @@ def main():
         state = json.loads(target.read_text()) if target.exists() else dict(index=row["index"],
                 input=row, chat=[], completed=False)
         if state.get("completed"):
+            if state.get("scoring_protocol") != VERSION:
+                raise RuntimeError("Completed result uses an obsolete scoring protocol; migrate first")
             if args.dataset != "bigcodebench" or state.get("code_harness") == harness_identity():
                 return state
             state.setdefault("code_previous_evaluations", []).append(dict(
@@ -186,6 +198,12 @@ def main():
         atomic_json(target, state)
         if args.phase == "generate":
             return state
+        if any(field in state for field in ["judge", "extraction"]) and state.get("scoring_protocol") != VERSION:
+            raise RuntimeError("Obsolete scoring fields must be archived before evaluation")
+        for kind in (["judge"] if args.dataset == "math-hard" else ["judge", "extract"]):
+            cached = load_score(score_params(args.dataset, state, kind, args.judge))
+            if cached is not None:
+                apply_score(state, kind, cached)
         if args.phase == "score" and ("judge" not in state or
                 (args.dataset != "math-hard" and "extraction" not in state)):
             raise RuntimeError("Missing prepaid batch judge/extractor result; no synchronous API fallback")
@@ -193,6 +211,8 @@ def main():
             prompt = legacy_prompt(f"llm_judge/{cfg['task']}.txt").format(
                     chat_history="", chat=chat_text(chat), question=row["prompt"], answer=row["completion"])
             state["judge"] = request_json(prompt, args.judge, "judge")
+            state["scoring_protocol"] = VERSION
+            state.setdefault("score_requests", {})["judge"] = digest(score_params(args.dataset, state, "judge", args.judge))
             atomic_json(target, state)
         raw_itr = float(state["judge"]["interactivity"]["score"])
         if not 1 <= raw_itr <= 3:
@@ -209,6 +229,8 @@ def main():
             if "extraction" not in state:
                 prompt = legacy_prompt("funtional/extract_answer.txt").format(chat=chat_text(chat))
                 state["extraction"] = request_json(prompt, args.judge, "extract")
+                state["scoring_protocol"] = VERSION
+                state.setdefault("score_requests", {})["extract"] = digest(score_params(args.dataset, state, "extract", args.judge))
                 atomic_json(target, state)
             answer = state["extraction"]["final_answer"]
             if args.dataset == "medium":
