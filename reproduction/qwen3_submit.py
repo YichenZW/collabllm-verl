@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--partition", choices=["general,clab", "dev"], default="general,clab")
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--mem", default="64G")
-    parser.add_argument("script", choices=["qwen3_eval.sh", "qwen3_train.sh", "qwen3_task_train.sh", "qwen3_smoke.sh", "qwen3_inference_smoke.sh", "qwen3_resume.sh", "qwen3_resume_smoke.sh"])
+    parser.add_argument("script", choices=["qwen3_eval.sh", "qwen3_sft_eval.sh", "qwen3_train.sh", "qwen3_task_train.sh", "qwen3_smoke.sh", "qwen3_inference_smoke.sh", "qwen3_resume.sh", "qwen3_resume_smoke.sh"])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.constraint is None:
