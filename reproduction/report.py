@@ -88,6 +88,8 @@ def main():
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
             writer.writeheader()
             writer.writerows(rows)
+    else:
+        (RUNS / "results.csv").unlink(missing_ok=True)
     if primary:
         with (RUNS / "comparison.csv").open("w") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
