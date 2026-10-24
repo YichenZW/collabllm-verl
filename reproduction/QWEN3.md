@@ -20,6 +20,17 @@ Training lengths remain 1536 for math/code and 2048 for writing. Math and code r
 first; writing follows those task experiments. The prior BF16/modern-TRL protocol
 differences from the archived paper code remain documented in RESULTS.zh-CN.md.
 
+`qwen3_data_audit.py` executes the archived preprocessing, preference filtering,
+SFT conversation selection and validation split functions on the pinned data.
+CPU job 2237966 completed successfully and compared every prepared training and
+validation row, plus all 200/600/100 selected math/code/writing test items.
+`data_fidelity_audit.json` records the source hashes and per-split evidence.
+Math and writing questions/answers match exactly. Code questions and decoded
+ground-truth JSON match, including unchanged tests and reference code; the
+ground-truth JSON key insertion order differs from the archived serialization.
+This is a documented prompt representation difference. No evaluation input was
+rewritten after generation to hide that difference.
+
 Qwen-specific changes are native ChatML assistant masking, retaining Qwen's pad
 token separately from EOS, and removing the native EOS-plus-newline suffix before
 TRL appends the completion EOS. The local model view forces `enable_thinking=false`
@@ -153,6 +164,21 @@ Refresh the machine-readable run status without any API calls:
 ```bash
 .venv/bin/python -m reproduction.qwen3_status
 ```
+
+The Qwen-specific evidence auditor checks saved training schedules, exact paid
+scoring cache requests and payloads, original metric calculations, reference-test
+provenance, report values and provider caps. It makes no model API calls:
+
+```bash
+.venv/bin/python -m reproduction.qwen3_audit
+```
+
+The initial audit correctly reports incomplete training/evaluation, with no
+integrity errors. `--final` also requires an explicit `evaluation.final_coverage`
+decision in `plan.json` for all three tasks, all requested four-method results,
+and settled batch manifests. Each coverage entry records `samples_per_variant`
+and `decision_basis`. The historical Llama `audit_results.py` is not the final
+verifier for this Qwen experiment.
 
 Larger evaluations can separate GPU generation from Claude Message Batch scoring.
 The batch requests use the identical model snapshot, prompts, temperature and

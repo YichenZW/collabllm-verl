@@ -65,6 +65,7 @@ def main():
         "Single seed; paired fixed-prefix subsets selected by API cost, not outcomes; sampling uncertainty remains",
         "BF16 and modern TRL replace the archived NF4 training implementation",
         "Archived training data and original test splits are retained; code overlap sensitivity is reported separately",
+        "A full archived-function data audit passed; BigCodeBench ground-truth JSON retains identical content but uses a different key insertion order",
         "Code execution retains original tests with documented HTTP-header and owned-child cleanup compatibility fixes; code_harness hashes identify rescored outputs",
         "Private setuptools80.9 overlay restores archived librosa pkg_resources imports; shared packages remain unchanged",
         "Audited BigCodeBench/111 and /276 reference/test inconsistencies retain original candidate scoring and enter a separate sensitivity analysis",
