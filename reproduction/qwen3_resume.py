@@ -5,8 +5,10 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from reproduction.common import ROOT, RUNS, atomic_json, source_identity
+from reproduction.qwen3_handoff import TERMINAL, handoff_source, job_state
 
 
 def training_command(arguments):
@@ -54,20 +56,25 @@ def main():
     args = parser.parse_args()
     if not os.getenv("SLURM_JOB_ID"):
         raise RuntimeError("Training resume must run inside a Slurm allocation")
+    os.environ["OMP_NUM_THREADS"] = os.getenv("SLURM_CPUS_PER_TASK", "4")
     inventory = json.loads((RUNS / "slurm_jobs.json").read_text())
     source = next(row for row in inventory if row["job"] == args.source_job)
     if args.task not in source["command"]:
         raise ValueError("Source job belongs to another task")
-    rows = subprocess.check_output(["sacct", "-n", "-P", "-j", str(args.source_job),
-                                   "--format=JobIDRaw,State"], text=True).splitlines()
-    state = next(row.split("|")[1].split()[0] for row in rows
-                 if row.split("|")[0] == str(args.source_job))
-    if state not in ["COMPLETED", "TIMEOUT", "FAILED", "OUT_OF_MEMORY", "CANCELLED", "NODE_FAIL", "PREEMPTED"]:
-        raise RuntimeError(f"Source training job is not terminal: {state}")
+    if not any(Path(part).name in {"qwen3_task_train.sh", "qwen3_train.sh", "qwen3_resume.sh"}
+               for part in source["command"]):
+        raise ValueError("Source job is not a training allocation")
     directory = RUNS / "checkpoints" / args.task / "offline_dpo"
+    state = job_state(args.source_job)
+    request = RUNS / "handoffs" / f"{args.task}-{os.environ['SLURM_JOB_ID']}.request.json"
+    if state not in TERMINAL and request.exists():
+        state = handoff_source(args.task, args.source_job, directory, resume_plan)
+    if state not in TERMINAL:
+        raise RuntimeError(f"Source training job is not terminal: {state}")
     plan = resume_plan(directory)
     record = dict(source_job=args.source_job, source_state=state, job=os.getenv("SLURM_JOB_ID"),
-                  task=args.task, started=time.time(), code=source_identity("reproduction/qwen3_resume.py"))
+                  task=args.task, started=time.time(), code=source_identity("reproduction/qwen3_resume.py",
+                    "reproduction/qwen3_handoff.py"))
     path = RUNS / "resumes" / f"{args.task}-{record['job']}.json"
     if plan is None:
         atomic_json(path, dict(record, status="already_complete"))

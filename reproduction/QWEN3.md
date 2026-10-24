@@ -50,8 +50,21 @@ original microbatch and accumulation sizes, are preserved even on another GPU
 type. Incomplete checkpoint writes are ignored. Evaluation depends on the full
 training/resume chain. `resumes/` records any continuation; resumed train loss and
 runtime describe the resumed segment, while `trainer_state.json` retains the
-global step and history. A separate GPU smoke check verifies checkpoint loading
+global step and history; the resumed Trainer loss is not a reconstructed mean
+over all original and resumed updates. A separate GPU smoke check verifies checkpoint loading
 and subsequent optimizer/adapter updates without making external API calls.
+
+An existing pending resume can also perform a controlled GPU handoff after a
+complete epoch checkpoint exists. A request in `RUNS/handoffs/` names the exact
+task, source job and replacement job. Once allocated, the replacement verifies
+job ownership, CUDA execution, adapter contents, optimizer step, scheduler step,
+and saved Python/NumPy/CPU/CUDA RNG states before cancelling only that source
+job. It waits for the source to become terminal before writing any training
+output. Until a replacement GPU is actually ready, the original training keeps
+running. Training resumes from the latest complete checkpoint with the original
+eight epochs, microbatch, accumulation and all other training arguments; work
+after that checkpoint may be recomputed. Handoff and resume audits retain both
+job identities and checkpoint provenance. CPU threads follow the new allocation.
 
 The full code reference preflight exposed two environment problems beyond the
 initial 32 samples: BigCodeBench/363 could hang when the upstream process guard
