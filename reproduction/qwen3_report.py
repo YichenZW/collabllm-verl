@@ -128,11 +128,23 @@ def main():
             "未按结果或显著性选择；预算决策见 `plan.json` 的 `evaluation.final_coverage`。", "",
             "离线对照图见 `figures/qwen3_table1_comparison.png`（另有 SVG/PDF）；"
             "完整验证结果见 `final_audit.json` 和 `final_offline_pipeline_audit.json`。", ""]
-    lines += ["具体设置与限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]
-    (RUNS / "RESULTS.zh-CN.md").write_text("\n".join(lines) + "\n")
     if (RUNS / "code_split_audit.json").exists():
         from reproduction.analyze_results import main as analyze
         analyze()
+        statistics = json.loads((RUNS / "statistical_analysis.json").read_text())
+        lines += ["配对比较使用相同题目上的两侧精确 McNemar 检验。差值为后者减前者，"
+            "Holm 校正在各任务列出的比较族内分别进行。", "",
+            "| 任务 | 前者 → 后者 | 样本数 | 差值 (百分点) | 原始 p | Holm 校正 p |",
+            "|---|---|---:|---:|---:|---:|"]
+        for task, key in [("math-hard", "math_paired"), ("bigcodebench", "code_paired")]:
+            for comparison in statistics[key]:
+                lines.append(f"| {task} | {LABELS[comparison['a']]} → {LABELS[comparison['b']]} | "
+                    f"{comparison['n']} | {comparison['difference_percentage_points']:+.2f} | "
+                    f"{comparison['mcnemar_exact_two_sided_p']:.4f} | "
+                    f"{comparison['mcnemar_holm_adjusted_p']:.4f} |")
+        lines += ["", "Writing BLEU 的标准误见结果数据与图；上表的二元正确性检验不适用于 BLEU。", ""]
+    lines += ["具体设置与限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]
+    (RUNS / "RESULTS.zh-CN.md").write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":
