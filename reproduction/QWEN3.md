@@ -33,6 +33,8 @@ Qwen's native 40,960-token capacity, so long writing conversations are not rejec
 by an artificial smaller limit. This changes capacity, not the task output limits
 or prompts; successfully completed pilot samples did not hit the smaller capacity.
 Each new server saves its exact command and context limit alongside its logs.
+Server and evaluation processes also record the code commit and source hashes
+at process start; the submission's commit alone does not freeze Python imports.
 
 New authorized API budgets are $100 OpenAI and $20 Anthropic. The coordinator
 enforces independent $99 and $19 conservative caps, including reservations for

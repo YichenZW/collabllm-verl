@@ -13,6 +13,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 
 import anthropic
@@ -23,7 +24,7 @@ from nltk.translate.bleu_score import sentence_bleu
 from openai import OpenAI
 
 from collabllm.utils.extract_json_reliable import extract_json
-from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, digest, legacy_prompt
+from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, digest, legacy_prompt, source_identity
 from reproduction.budget import metered_call, BudgetExceeded
 from reproduction.response_schema import validate_payload
 
@@ -54,6 +55,10 @@ def main():
         records = records[:args.limit]
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
+    atomic_json(out / "executions" / f"{args.phase}-{uuid.uuid4().hex}.json", dict(
+        phase=args.phase, job=os.getenv("SLURM_JOB_ID"), hostname=socket.gethostname(),
+        started_unix=time.time(), code=source_identity("reproduction/evaluate.py", "reproduction/common.py",
+            "reproduction/budget.py", "reproduction/response_schema.py")))
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")

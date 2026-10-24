@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -31,6 +32,11 @@ def atomic_json(path, data):
 
 def digest(data):
     return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()
+
+def source_identity(*relative_paths):
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    return dict(commit_at_process_start=commit, files={p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
+                for p in relative_paths})
 
 def legacy_prompt(relative_path):
     return (LEGACY / "collabllm/prompts" / relative_path).read_text()

@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from reproduction.common import RUNS, atomic_json
+from reproduction.common import RUNS, atomic_json, source_identity
 
 def main():
     os.environ["OMP_NUM_THREADS"] = str(min(4, int(os.getenv("SLURM_CPUS_PER_TASK", "4"))))
@@ -30,7 +30,8 @@ def main():
         command += ["--lora-modules"] + args.adapter
     atomic_json(RUNS / "logs" / f"server-config-{os.getenv('SLURM_JOB_ID', 'local')}-{args.port}.json",
         dict(command=command, model_revision=assets["revision"], native_context=native_context,
-             max_model_len=context, enable_thinking=assets["enable_thinking"]))
+             max_model_len=context, enable_thinking=assets["enable_thinking"],
+             code=source_identity("reproduction/serve.py", "reproduction/common.py")))
     os.execv(sys.executable, command)
 
 if __name__ == "__main__":
