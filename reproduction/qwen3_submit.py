@@ -14,9 +14,10 @@ def main():
     parser.add_argument("--time", default="12:00:00")
     parser.add_argument("--after", action="append", type=int, default=[])
     parser.add_argument("--constraint", default="a40|a100|h100")
+    parser.add_argument("--partition", choices=["general,clab", "dev"], default="general,clab")
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--mem", default="64G")
-    parser.add_argument("script", choices=["qwen3_eval.sh", "qwen3_train.sh", "qwen3_task_train.sh", "qwen3_smoke.sh"])
+    parser.add_argument("script", choices=["qwen3_eval.sh", "qwen3_train.sh", "qwen3_task_train.sh", "qwen3_smoke.sh", "qwen3_inference_smoke.sh"])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if not re.fullmatch(r"qwen4b-[a-z0-9-]+", args.name):
@@ -32,7 +33,7 @@ def main():
         target.chmod(0o444)
         hashes[source.name] = digest(content)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    command = ["sbatch", "--parsable", "--job-name", args.name, "--partition", "general,clab",
+    command = ["sbatch", "--parsable", "--job-name", args.name, "--partition", args.partition,
         "--gres", "gpu:1", "--nodes", "1", "--cpus-per-task", str(args.cpus), "--mem", args.mem,
         "--time", args.time, "--constraint", args.constraint, "--chdir", str(ROOT),
         "--output", str(RUNS / "logs" / f"{args.name}-%j.log")]
