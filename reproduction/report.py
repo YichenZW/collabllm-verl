@@ -23,6 +23,8 @@ def main():
         if not manifest_path.exists():
             continue
         manifest, summary = json.loads(manifest_path.read_text()), json.loads(path.read_text())
+        if manifest.get("scoring_protocol") and summary.get("scoring_protocol") != manifest["scoring_protocol"]:
+            continue  # A generation process may still be publishing pre-migration counters.
         metrics = summary.get("metrics", {})
         if not metrics:
             continue

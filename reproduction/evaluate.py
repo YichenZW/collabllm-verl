@@ -275,7 +275,7 @@ def main():
             scored = [r for r in results if r.get("completed")]
             summary = dict(expected=len(records), completed=len(scored),
                 generated=sum(bool(r.get("generated") or r.get("completed")) for r in results),
-                failed=len(errors), errors=errors)
+                failed=len(errors), errors=errors, scoring_protocol=VERSION)
             if scored:
                 summary["metrics"] = {k: dict(mean=float(np.mean([r["metrics"][k] for r in scored])),
                   sem=float(np.std([r["metrics"][k] for r in scored], ddof=1)/np.sqrt(len(scored))) if len(scored)>1 else None)

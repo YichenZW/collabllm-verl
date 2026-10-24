@@ -23,7 +23,12 @@ def main():
         job["slurm"] = accounting.get(job["job"], {})
     evaluations = []
     for path in RUNS.glob("eval-*/*/*/summary.json"):
-        evaluations.append(dict(path=str(path), **json.loads(path.read_text())))
+        summary = json.loads(path.read_text())
+        manifest = json.loads((path.parent / "manifest.json").read_text())
+        if manifest.get("scoring_protocol") and summary.get("scoring_protocol") != manifest["scoring_protocol"]:
+            summary.pop("metrics", None)
+            summary.update(completed=0, scoring_status="awaiting_corrected_scoring")
+        evaluations.append(dict(path=str(path), **summary))
     training = []
     for path in RUNS.glob("checkpoints/*/*/train_results.json"):
         training.append(dict(path=str(path), **json.loads(path.read_text())))
