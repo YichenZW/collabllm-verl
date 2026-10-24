@@ -6,10 +6,10 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNS = Path(os.getenv("COLLABLLM_RUNS", str(ROOT.parent / "collabllm-runs")))
+RUNS = Path(os.getenv("COLLABLLM_RUNS", str(ROOT.parent / "collabllm-qwen3-4b-runs")))
 LEGACY = ROOT.parent / "collabllm-paper-original"
 PAPER_COMMIT = "d573e49"
-BASE = "meta-llama/Llama-3.1-8B-Instruct"
+BASE = "Qwen/Qwen3-4B"
 TASKS = {
     "medium": dict(task="document-editing", n=100, turns=8, temperature=0.8,
                    max_tokens=2048, adapter="writing", user="gpt-4o", gap=0.02),

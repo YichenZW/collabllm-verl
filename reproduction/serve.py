@@ -18,9 +18,10 @@ def main():
         "--dtype", "bfloat16", "--max-model-len", "16384",
         "--gpu-memory-utilization", "0.88", "--max-num-seqs", "16",
         "--enable-lora", "--max-lora-rank", "32", "--max-loras", "3",
-        "--max-cpu-loras", str(3 + len(args.adapter)), "--disable-log-requests", "--lora-modules"]
-    command += [f"{name}={assets[name]['adapter']}" for name in ["medium", "math-hard", "bigcodebench"]]
-    command += args.adapter
+        "--max-cpu-loras", str(max(3, len(args.adapter))), "--disable-log-requests",
+        "--generation-config", "vllm"]
+    if args.adapter:
+        command += ["--lora-modules"] + args.adapter
     os.execv(sys.executable, command)
 
 if __name__ == "__main__":

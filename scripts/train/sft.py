@@ -158,7 +158,8 @@ def load_model_and_tokenizer(
         if lora_cfg:
             model = get_peft_model(model, lora_cfg)
 
-    tok.padding_side, tok.pad_token = ("left" if is_eval else "right"), tok.eos_token
+    tok.padding_side = "left" if is_eval else "right"
+    tok.pad_token = tok.pad_token or tok.eos_token
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total     = sum(p.numel() for p in model.parameters())
     print(f"Trainable params: {trainable:,}/{total:,} ({trainable/total:.2%})")
@@ -282,9 +283,10 @@ def main() -> None:
     
     collator = None
     if args.assistant_only_loss:
+        is_qwen = model.config.model_type == "qwen3"
         collator = DataCollatorForCompletionOnlyLM(
-            instruction_template="<|start_header_id|>user<|end_header_id|>",
-            response_template="<|start_header_id|>assistant<|end_header_id|>",
+            instruction_template="<|im_start|>user\n" if is_qwen else "<|start_header_id|>user<|end_header_id|>",
+            response_template="<|im_start|>assistant\n" if is_qwen else "<|start_header_id|>assistant<|end_header_id|>",
             tokenizer=tok,
         )
     trainer = SFTTrainer(

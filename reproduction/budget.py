@@ -22,8 +22,9 @@ from reproduction.common import RUNS
 # USD per million input / output tokens. Cache discounts deliberately ignored.
 RATES = {"gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0),
          "claude-sonnet-4-5-20250929": (3.0, 15.0)}
-CAP_MICRO = 38_000_000  # User's $40 limit, leaving $2 of billing headroom.
-PRIOR_PROBES_MICRO = 100_000  # Conservative allowance for three tiny successful probes.
+CAP_MICRO = 118_000_000  # New experiment only; historical ledgers are separate.
+PROVIDER_CAP_MICRO = {"openai": 99_000_000, "anthropic": 19_000_000}
+PRIOR_PROBES_MICRO = 0  # Every new probe uses the reservation guard.
 LOCAL_LOCK = threading.RLock()
 
 def rpc(action, payload):
@@ -130,6 +131,10 @@ def rates(model):
         return RATES[model]
     raise ValueError(f"Refusing unpriced API model: {model}")
 
+def provider(model):
+    rates(model)
+    return "anthropic" if "claude" in model else "openai"
+
 def reserve(model, messages, max_tokens, path=None):
     rates(model)  # Reject unknown models before any request, including RPC.
     # For text-only requests, UTF-8 bytes upper-bound token count, with extra
@@ -159,6 +164,12 @@ def reserve_bound(model, input_bytes, max_tokens, ident, path=None):
         if used + amount > CAP_MICRO:
             raise BudgetExceeded(f"API cap reached: committed/reserved ${used/1e6:.4f}; "
                                  f"next reservation ${amount/1e6:.4f}; cap ${CAP_MICRO/1e6:.2f}")
+        vendor = provider(model)
+        vendor_used = sum(row["micro"] for row in calls.values()
+                          if row["model"] != "probe allowance" and provider(row["model"]) == vendor)
+        if vendor_used + amount > PROVIDER_CAP_MICRO[vendor]:
+            raise BudgetExceeded(f"{vendor} cap reached: committed/reserved ${vendor_used/1e6:.4f}; "
+                                 f"next reservation ${amount/1e6:.4f}; cap ${PROVIDER_CAP_MICRO[vendor]/1e6:.2f}")
         calls[ident] = dict(model=model, status="reserved", micro=amount, reserved_micro=amount,
                            input_bytes=input_bytes, max_tokens=max_tokens,
                            input_tokens=0, output_tokens=0, created=time.time())
@@ -222,7 +233,11 @@ def status():
             group[i] += val
     rows = [[model, state, n, micro/1e6, n_in, n_out]
             for (model, state), (n, micro, n_in, n_out) in sorted(grouped.items())]
-    return {"cap_usd": CAP_MICRO/1e6, "committed_usd": sum(r[3] for r in rows), "details": rows}
+    vendors = {name: dict(cap_usd=cap/1e6, committed_usd=sum(
+        row["micro"] for row in calls.values() if row["model"] != "probe allowance"
+        and provider(row["model"]) == name)/1e6) for name, cap in PROVIDER_CAP_MICRO.items()}
+    return {"cap_usd": CAP_MICRO/1e6, "committed_usd": sum(r[3] for r in rows),
+            "providers": vendors, "details": rows}
 
 if __name__ == "__main__":
     import sys

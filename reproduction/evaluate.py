@@ -55,6 +55,9 @@ def main():
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
+    assets = json.loads((RUNS / "assets.json").read_text())
+    manifest.update(underlying_model=assets["model_id"], model_revision=assets["revision"],
+                    enable_thinking=assets["enable_thinking"], generation_config="vllm")
     manifest.pop("local_url")  # Endpoint location does not change experimental identity.
     manifest.pop("seed_results")
     manifest_path = out / "manifest.json"
@@ -65,7 +68,8 @@ def main():
         source = Path(args.seed_results)
         prior = json.loads((source / "manifest.json").read_text())
         identity = ["dataset", "variant", "model", "judge", "user_model", "seed", "protocol",
-                    "judge_changed_from_paper", "itr_scaling", "bleu"]
+                    "judge_changed_from_paper", "itr_scaling", "bleu", "underlying_model",
+                    "model_revision", "enable_thinking", "generation_config"]
         if any(prior[k] != manifest[k] for k in identity):
             raise ValueError("Seed results used a different experimental protocol")
         for row in records:
