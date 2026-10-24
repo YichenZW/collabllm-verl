@@ -182,7 +182,9 @@ def main() -> None:
     # Dataset
     if args.prepared_dataset:
         from datasets import load_from_disk
-        ds = load_from_disk(args.dataset_repo)
+        # These prepared splits are small. Keep subsequent TRL maps in memory
+        # so preprocessing never writes Arrow caches beside shared source data.
+        ds = load_from_disk(args.dataset_repo, keep_in_memory=True)
     else:
         wrapped_ds = MultiturnDataset(args.dataset_repo)
         if args.system_prompt_file:

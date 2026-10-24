@@ -241,12 +241,14 @@ batch manifests for the next stage. SIGTERM requests a clean stop after the
 current operation finishes, without interrupting a reserved API submission.
 
 Expansion decisions are recorded before generating additional samples. The
-current approved targets are math200 and code100 for all four offline methods.
+current approved targets are math200 and code150 for all four offline methods.
 Code100 uses the actual new24-sample batch costs from completed Base/Proactive32,
 the higher original pilot projection, and a 50% margin. Its planning calculation
 also includes outstanding trained32 evaluations, full math200, and a $10 writing
 allowance (`code100_cost_decision.json`). This is an estimate, subject to the
-provider hard caps. Larger code targets await all four methods' measured costs.
+provider hard caps. After all four code100 runs completed, `code150_cost_decision.json`
+selected 150 using their measured costs, a 50% margin, and the same $10 writing
+allowance. All outstanding math200 scoring was already cached or reserved.
 Only fully scored seed stages are copied, avoiding duplicate judge requests.
 The worker can watch both `eval-200` and `eval-100` as extra roots while the
 trained32 comparisons finish.
@@ -280,3 +282,12 @@ budget. Original code execution still receives the extractor output directly;
 no selective fence stripping, escape repair, or reference-based edits are applied
 to improve scores. The wrapper correction does not guarantee syntactically valid
 code extraction from the replacement Claude model.
+
+Prepared offline-DPO splits are loaded into memory before chat rendering and TRL
+tokenization, so these maps do not write Arrow caches beside the shared source
+data. This avoids the cache-write `OSError: [Errno 14] Bad address` encountered
+when resuming writing on m002. Dataset rows, their order, tokenization, and all
+training arguments remain unchanged. The failed attempt stopped before a new
+optimizer update; recovery uses the complete step-28 optimizer, scheduler, and
+RNG checkpoint. `writing_memory_preprocessing_audit.json` verifies the raw rows
+and full TRL preprocessing of all 1,767 training and 50 validation examples.
