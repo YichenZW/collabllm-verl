@@ -6,11 +6,13 @@ submits or restarts training jobs, and local finalization has no paid fallback.
 import argparse
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
 import time
 import uuid
+from pathlib import Path
 
 from reproduction.common import ROOT, RUNS, atomic_json, source_identity
 
@@ -22,28 +24,42 @@ def main():
     parser.add_argument("--variants", nargs="+", default=["base", "proactive", "sft", "offline_dpo"])
     parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--hours", type=float, default=18)
+    parser.add_argument("--extra-roots", nargs="*", type=Path, default=[],
+                        help="Also score these approved stages; completion still refers to --limit")
     args = parser.parse_args()
     if args.limit <= 0 or args.interval < 30 or not 0 < args.hours <= 48:
         raise ValueError("Invalid stage or polling bounds")
     root = RUNS / f"eval-{args.limit}"
+    roots = [root] + args.extra_roots
+    if any(path.parent.resolve() != RUNS.resolve() or not path.name.startswith("eval-") for path in roots):
+        raise ValueError("Only this experiment's evaluation directories may be watched")
     lease = RUNS / "batch-worker.lock"
     lease.mkdir()  # One stage controller; never steal another worker's lease.
     state_path = RUNS / "batch_worker.json"
     state = dict(instance=uuid.uuid4().hex, pid=os.getpid(), host=socket.getfqdn(),
                  started=time.time(), root=str(root), tasks=args.tasks, variants=args.variants,
+                 watched_roots=list(map(str, roots)), completion_scope=str(root),
                  status="running", code=source_identity("reproduction/qwen3_batch_worker.py"))
     atomic_json(lease / "owner.json", state)
     deadline = time.monotonic() + args.hours * 3600
     env = dict(os.environ, ENABLE_COLLABLLM_LOGGING="0", PYTHONUNBUFFERED="1",
                OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
     last_progress = None
+    stopping = False
+    def request_stop(*_):
+        nonlocal stopping
+        stopping = True  # Let the current reserved operation finish before exit.
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
     try:
         while time.monotonic() < deadline:
             for module, arguments in [
-                ("qwen3_batch", ["--roots", str(root), "--submit", "--max-requests", "64"]),
-                ("qwen3_finalize", ["--roots", str(root)]),
+                ("qwen3_batch", ["--roots", *map(str, roots), "--submit", "--max-requests", "64"]),
+                ("qwen3_finalize", ["--roots", *map(str, roots)]),
                 ("qwen3_report", []), ("qwen3_status", []),
             ]:
+                if stopping:
+                    break
                 # Full output is retained in the worker's redirected log.
                 subprocess.run([sys.executable, "-m", f"reproduction.{module}", *arguments],
                                cwd=ROOT, env=env, check=True)
@@ -55,6 +71,10 @@ def main():
                     progress[f"{task}/{variant}"] = {k: summary.get(k) for k in
                         ["expected", "generated", "completed", "failed"]}
             state.update(updated=time.time(), progress=progress)
+            if stopping:
+                state["status"] = "stopped_by_request"
+                atomic_json(state_path, state)
+                return
             complete = all(row["expected"] == args.limit and row["completed"] == args.limit
                            and row["failed"] == 0 for row in progress.values())
             if complete:
