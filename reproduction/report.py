@@ -36,7 +36,8 @@ def main():
             for line in usage_path.read_text().splitlines():
                 call = json.loads(line)
                 usage = call["usage"]
-                inp, out = rates(call["model"])
+                billing_model = call["model"] + ("@batch" if call.get("transport") == "batch" else "")
+                inp, out = rates(billing_model)
                 n_in = usage.get("prompt_tokens", usage.get("input_tokens", 0))
                 n_in += (usage.get("cache_creation_input_tokens", 0) or 0) + (usage.get("cache_read_input_tokens", 0) or 0)
                 n_out = usage.get("completion_tokens", usage.get("output_tokens", 0))
@@ -49,6 +50,8 @@ def main():
               task_score_ci95_high_percent=100*interval[1] if interval[1] is not None else None,
               assistant_tokens_k=metrics["tokens_k"]["mean"], itr_percent=100*metrics["itr"]["mean"],
               new_api_cost_usd=api_cost,
+              underlying_model=manifest.get("underlying_model"),
+              model_revision=manifest.get("model_revision"),
               user=manifest["user_model"], judge=manifest["judge"],
               paper_task_score_percent=None, paper_assistant_tokens_k=None, paper_itr_percent=None)
         if manifest["variant"] in names:
