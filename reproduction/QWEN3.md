@@ -286,6 +286,25 @@ protocols. Exact scoring request hashes prevent duplicate judge requests.
 The worker can watch both `eval-200` and `eval-100` as extra roots while the
 trained32 comparisons finish.
 
+After all four writing100 evaluations settled, cost reviews in
+`code_expansion_after_175_decision.json` and
+`code_expansion_after_200_decision.json` selected balanced code200 and code225
+stages. `RUNS/runtime/decide-code-expansion.py --current N` reads the completed
+stage's usage-derived costs, requires settled Claude batches, and selects the
+largest next 25-example increment with a 50% cost margin under both provider
+caps. It does not read task scores, rankings, or statistical significance.
+Every expansion preserves the prior scored sample bytes. Final coverage is
+recorded only after the last selected stage settles and a further cost review
+finds no additional balanced block that fits.
+
+The final offline pipeline is saved in `RUNS/runtime/final-report/run.sh`.
+It refreshes tables and status, runs `qwen3_audit --final`, exports comparison
+figures, and verifies that the 12 plotted rows match the report and final sample
+counts. `final_offline_pipeline_audit.json` also records that the API ledger did
+not change during this work. Keep the budget coordinator alive until these
+read-only checks finish, then release its exact Slurm job and record the resource
+release separately; do not reopen paid work to regenerate the report.
+
 Writing dialogue generation and scoring coverage are budgeted separately.
 `writing_ready100_generation_cost_decision.json` and
 `writing_dpo100_generation_cost_decision.json` authorize the original 100-example

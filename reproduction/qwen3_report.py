@@ -112,9 +112,23 @@ def main():
         f"本轮已结算加保留金额：OpenAI ${budget['openai']['committed_usd']:.6f}，"
         f"Claude ${budget['anthropic']['committed_usd']:.6f}；程序硬上限分别为 "
         f"${budget['openai']['cap_usd']:g} 和 ${budget['anthropic']['cap_usd']:g}。", "",
-        "PPO、Online DPO 尚不能作为已复现结果。完整数据、置信区间和训练状态见 `report.json`、"
+        "金额按 API 用量和预留额保守估算，并非供应商账单；失败调用和修正评分的费用也计入同一预算。", "",
+        "按已确认的预算优先级，本轮评测 Base、Proactive Base、SFT 和 Offline DPO；"
+        "PPO、Online DPO 未运行。完整数据、置信区间和训练状态见 `report.json`、"
         "`comparison.csv`、`status.json`；配对检验及代码训练集重叠敏感性分析见 `statistical_analysis.json`。", "",
-        "该报告随运行更新；具体限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]
+        "训练复用作者发布的准备后数据，未重新采集 Qwen 偏好数据。SFT 为 3 epochs，Offline DPO 为 8 epochs；"
+        "使用最后一个 epoch 的 checkpoint。裁判使用 Claude Sonnet 4.5 替代已退役的 3.5，"
+        "训练使用 BF16 和现代 TRL，生成使用 vLLM。单次训练种子和每题一次对话不能衡量重复训练或 API 重跑的变异。", ""]
+    coverage = data["plan"]["evaluation"].get("final_coverage")
+    if coverage:
+        description = "、".join(
+            f"{task} {coverage[task]['samples_per_variant']}/{data['plan']['evaluation']['paper_test_size'][task]}"
+            for task in TASKS)
+        lines += [f"最终每方法覆盖：{description}。样本数按实际 API 成本与预留余量决定，"
+            "未按结果或显著性选择；预算决策见 `plan.json` 的 `evaluation.final_coverage`。", "",
+            "离线对照图见 `figures/qwen3_table1_comparison.png`（另有 SVG/PDF）；"
+            "完整验证结果见 `final_audit.json` 和 `final_offline_pipeline_audit.json`。", ""]
+    lines += ["具体设置与限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]
     (RUNS / "RESULTS.zh-CN.md").write_text("\n".join(lines) + "\n")
     if (RUNS / "code_split_audit.json").exists():
         from reproduction.analyze_results import main as analyze
