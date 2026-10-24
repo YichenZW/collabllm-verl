@@ -101,6 +101,17 @@ bash reproduction/qwen3_eval.sh math-hard 32 base,proactive,sft,offline_dpo /net
 .venv/bin/python -m reproduction.qwen3_finalize --roots /net/spaces/scratch/yichenzw-scratch2/collabllm-qwen3-4b-runs/eval-32
 ```
 
+An optional bounded worker finishes one fixed evaluation stage while its GPU jobs
+run. It submits reserved batches, collects results, finalizes local scores, and
+refreshes reports. It exits only after all requested methods finish or on an
+error/timeout; it does not expand samples or restart training. Do not run manual
+batch controllers concurrently with this worker. Its owner, progress and log are
+recorded under the run directory.
+
+```bash
+.venv/bin/python -m reproduction.qwen3_batch_worker --limit 32 --tasks math-hard bigcodebench
+```
+
 Submit immutable copies of shell launchers, so later edits cannot alter a running
 Bash script. Initial job 2237770 failed from such a live edit before evaluation;
 2237776 failed during CUDA initialization on r001, also before any paid evaluation.
