@@ -78,7 +78,8 @@ def main():
     lines += ["", "任务分数分别为 math accuracy、code pass rate、writing character BLEU。"
         "ITR 保留原代码 `(raw−2.5)×2`，因此可为负。论文数字使用不同底座和裁判，只作背景参考。", "",
         f"本轮已结算加保留金额：OpenAI ${budget['openai']['committed_usd']:.6f}，"
-        f"Claude ${budget['anthropic']['committed_usd']:.6f}；程序硬上限分别为 $99 和 $19。", "",
+        f"Claude ${budget['anthropic']['committed_usd']:.6f}；程序硬上限分别为 "
+        f"${budget['openai']['cap_usd']:g} 和 ${budget['anthropic']['cap_usd']:g}。", "",
         "PPO、Online DPO 尚不能作为已复现结果。完整数据、置信区间和训练状态见 `report.json`、"
         "`comparison.csv`、`status.json`；代码训练集重叠敏感性分析见 `statistical_analysis.json`。", "",
         "该报告随运行更新；具体限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]

@@ -44,6 +44,8 @@ def make_server(host, port, token, path=None):
                         result = budget.settle(path=path, **payload)
                     elif self.path == "/health":
                         result = {"cap_usd": budget.CAP_MICRO / 1e6,
+                                  "provider_caps_usd": {name: cap / 1e6 for name, cap
+                                                        in budget.PROVIDER_CAP_MICRO.items()},
                                   "records": len(budget.read_ledger(budget.ledger_path(path)))}
                     else:
                         raise ValueError("Unknown budget action")

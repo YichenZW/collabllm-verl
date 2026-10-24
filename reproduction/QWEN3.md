@@ -39,8 +39,10 @@ New long-context evaluation jobs request one A100/H100, matching the successful
 80 GB inference check. Writing training also requests this memory class for its
 longer sequences; automatic microbatch sizing retains effective batch size 64.
 
-New authorized API budgets are $100 OpenAI and $20 Anthropic. The coordinator
-enforces independent $99 and $19 conservative caps, including reservations for
+Authorized API budgets for this Qwen experiment are $100 OpenAI and $40 Anthropic.
+The user added another $20 Anthropic credit after the initial $20 authorization;
+the authorization history is recorded in `plan.json`. The coordinator
+enforces independent $99 and $39 conservative caps, including reservations for
 unknown/failed calls. All probes, simulated users, and judges use this guard.
 An unavailable coordinator fails closed. No allowance from another experiment is
 reused. The user selected retaining Claude scoring, prioritizing math/code paired
