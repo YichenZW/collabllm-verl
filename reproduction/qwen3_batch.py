@@ -78,9 +78,6 @@ def submit(client, items, destination, max_requests=64):
 
 
 def refresh(client, path):
-    from collabllm.utils.extract_json_reliable import extract_json
-    from reproduction.response_schema import validate_payload
-
     record = json.loads(path.read_text())
     if record["state"] == "ended":
         return record
@@ -91,6 +88,9 @@ def refresh(client, path):
     atomic_json(path, record)
     if response.processing_status != "ended":
         return record
+    from collabllm.utils.extract_json_reliable import extract_json
+    from reproduction.response_schema import validate_payload
+
     lookup = {item["custom_id"]: item for item in record["items"]}
     for result in client.messages.batches.results(record["batch_id"]):
         item = lookup[result.custom_id]
@@ -160,7 +160,9 @@ def main():
             if record:
                 records.append(record)
         print(json.dumps(dict(batches=[dict(batch_id=r.get("batch_id"), state=r["state"],
-            requests=len(r["items"])) for r in records], budget=budget.status()), indent=2))
+            requests=len(r["items"]), provider_status=r.get("provider", {}).get("processing_status"),
+            request_counts=r.get("provider", {}).get("request_counts")) for r in records],
+            budget=budget.status()), indent=2))
     finally:
         lease.rmdir()
 
