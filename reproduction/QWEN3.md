@@ -190,6 +190,16 @@ Refresh the machine-readable run status without any API calls:
 .venv/bin/python -m reproduction.qwen3_status
 ```
 
+Refresh the result tables and offline statistics with
+`.venv/bin/python -m reproduction.qwen3_report`. `statistical_analysis.json`
+contains exact paired McNemar tests for the four listed math contrasts and all
+six contrasts among the four code methods. It records raw p-values and Holm
+adjustments separately within each task's contrast family. Pairing requires
+identical sample IDs and inputs; mismatched cohorts or nonbinary outcomes fail
+instead of silently reducing the comparison to their intersection. These tests
+use one saved conversation per task/model and do not measure variation between
+training or API reruns. Reporting makes no model API calls.
+
 The Qwen-specific evidence auditor checks saved training schedules, exact paid
 scoring cache requests and payloads, original metric calculations, reference-test
 provenance, report values and provider caps. It makes no model API calls:
@@ -240,8 +250,9 @@ to the primary `--limit` stage; any extra-stage requests remain in the durable
 batch manifests for the next stage. SIGTERM requests a clean stop after the
 current operation finishes, without interrupting a reserved API submission.
 
-Expansion decisions are recorded before generating additional samples. The
-current approved targets are math200 and code150 for all four offline methods.
+Expansion decisions are recorded before generating or scoring additional samples.
+`plan.json` is authoritative for approved and final coverage. Recorded stages
+include full math200 and code100, code150, and code175 for all four methods.
 Code100 uses the actual new24-sample batch costs from completed Base/Proactive32,
 the higher original pilot projection, and a 50% margin. Its planning calculation
 also includes outstanding trained32 evaluations, full math200, and a $10 writing
@@ -249,9 +260,24 @@ allowance (`code100_cost_decision.json`). This is an estimate, subject to the
 provider hard caps. After all four code100 runs completed, `code150_cost_decision.json`
 selected 150 using their measured costs, a 50% margin, and the same $10 writing
 allowance. All outstanding math200 scoring was already cached or reserved.
-Only fully scored seed stages are copied, avoiding duplicate judge requests.
+`code175_cost_decision.json` applies the same margin and writing allowance to the
+completed code150 costs. Scored seeds retain their paid response fields, while
+finished generation-only dialogues can also be reused with identical inputs and
+protocols. Exact scoring request hashes prevent duplicate judge requests.
 The worker can watch both `eval-200` and `eval-100` as extra roots while the
 trained32 comparisons finish.
+
+Writing dialogue generation and scoring coverage are budgeted separately.
+`writing_ready100_generation_cost_decision.json` and
+`writing_dpo100_generation_cost_decision.json` authorize the original 100-example
+dialogue set within the OpenAI cap. The intermediate Claude stage in
+`writing75_ready_cost_decision.json` scores Base, Proactive, and SFT on the fixed
+first 75 examples while full DPO training continues. Its planning estimate doubles
+the highest measured ready-method Claude mean for the unknown DPO cost, then
+adds a 50% margin to both the ready-method increment and the entire DPO75
+allowance. Staging reuses generated dialogues with paid generation calls disabled.
+Later balanced scoring expansion toward 100 uses actual DPO pilot and ready75
+costs; 75 is not a final coverage decision. Paid batch controllers run serially.
 
 Submit immutable copies of shell launchers, so later edits cannot alter a running
 Bash script. Initial job 2237770 failed from such a live edit before evaluation;

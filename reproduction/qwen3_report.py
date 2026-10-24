@@ -113,7 +113,7 @@ def main():
         f"Claude ${budget['anthropic']['committed_usd']:.6f}；程序硬上限分别为 "
         f"${budget['openai']['cap_usd']:g} 和 ${budget['anthropic']['cap_usd']:g}。", "",
         "PPO、Online DPO 尚不能作为已复现结果。完整数据、置信区间和训练状态见 `report.json`、"
-        "`comparison.csv`、`status.json`；代码训练集重叠敏感性分析见 `statistical_analysis.json`。", "",
+        "`comparison.csv`、`status.json`；配对检验及代码训练集重叠敏感性分析见 `statistical_analysis.json`。", "",
         "该报告随运行更新；具体限制见 `report.json` 的 caveats 和代码目录 `reproduction/QWEN3.md`。"]
     (RUNS / "RESULTS.zh-CN.md").write_text("\n".join(lines) + "\n")
     if (RUNS / "code_split_audit.json").exists():
