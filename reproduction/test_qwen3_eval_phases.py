@@ -5,10 +5,12 @@ from types import SimpleNamespace as NS
 import pytest
 
 from reproduction import evaluate
+from reproduction import judge_protocol
 
 
 def test_generation_and_precomputed_scoring_do_not_call_paid_judge(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluate, "RUNS", tmp_path)
+    monkeypatch.setattr(judge_protocol, "RUNS", tmp_path)
     (tmp_path / "data").mkdir()
     (tmp_path / "assets.json").write_text(json.dumps(dict(model_id="Qwen/Qwen3-4B", revision="test", enable_thinking=False)))
     row = dict(index=1, prompt="2+2?", completion="4", metadata={})
@@ -43,6 +45,14 @@ def test_generation_and_precomputed_scoring_do_not_call_paid_judge(tmp_path, mon
         evaluate.main()
     assert len(calls) == 2
     state["judge"] = dict(interactivity=dict(score=3), accuracy=dict(score=1))
+    sample.write_text(json.dumps(state))
+    with pytest.raises(RuntimeError, match="samples failed"):
+        evaluate.main()
+    assert len(calls) == 2  # Obsolete fields neither count as scores nor trigger paid fallback.
+    payload = state.pop("judge")
+    params = judge_protocol.score_params("math-hard", state, "judge", "claude-sonnet-4-5-20250929")
+    cached = judge_protocol.save_score(params, payload, dict(transport="batch", usage={}))
+    judge_protocol.apply_score(state, "judge", cached)
     sample.write_text(json.dumps(state))
     evaluate.main()
     assert len(calls) == 2
