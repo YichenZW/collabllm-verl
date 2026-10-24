@@ -1,6 +1,7 @@
 """Transfer an owned training job only after its replacement GPU is ready."""
 import json
 import os
+import re
 import subprocess
 import time
 
@@ -10,6 +11,21 @@ TERMINAL = {"COMPLETED", "TIMEOUT", "FAILED", "OUT_OF_MEMORY", "CANCELLED", "NOD
 
 
 def job_state(job):
+    # Accounting can still say PENDING just after a batch allocation starts.
+    # Use the controller for live jobs; only archived jobs require sacct.
+    live = subprocess.run(["scontrol", "show", "job", "-o", str(job)],
+                          capture_output=True, text=True)
+    if live.returncode == 0:
+        identity = re.search(r"\bJobId=(\d+)\b", live.stdout)
+        owner = re.search(r"\bUserId=[^\s(]+\((\d+)\)", live.stdout)
+        state = re.search(r"\bJobState=(\w+)\b", live.stdout)
+        if not identity or int(identity[1]) != int(job) or not owner or not state:
+            raise RuntimeError("Cannot verify live Slurm job identity/state")
+        if int(owner[1]) != os.getuid():
+            raise RuntimeError("Refusing to control a job owned by another user")
+        return state[1]
+    if "Invalid job id" not in live.stderr:
+        raise RuntimeError(f"Cannot query live Slurm job state: {live.stderr.strip()}")
     output = subprocess.check_output(["sacct", "-n", "-P", "-j", str(job),
         "--format=JobIDRaw,State,UID"], text=True)
     row = next(line.split("|") for line in output.splitlines()

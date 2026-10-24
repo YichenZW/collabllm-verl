@@ -9,8 +9,29 @@ from reproduction import qwen3_handoff as handoff
 
 def test_accounting_requires_current_job_owner(monkeypatch):
     monkeypatch.setattr(handoff.os, "getuid", lambda: 123)
+    monkeypatch.setattr(handoff.subprocess, "run", lambda *args, **kw:
+                        SimpleNamespace(returncode=1, stdout="", stderr="Invalid job id specified"))
     monkeypatch.setattr(handoff.subprocess, "check_output", lambda *args, **kw: "101|RUNNING|456\n")
     with pytest.raises(RuntimeError, match="another user"):
+        handoff.job_state(101)
+
+
+def test_controller_state_prevents_stale_accounting_at_startup(monkeypatch):
+    monkeypatch.setattr(handoff.os, "getuid", lambda: 123)
+    monkeypatch.setattr(handoff.subprocess, "check_output", lambda *args, **kw: "101|PENDING|123\n")
+    monkeypatch.setattr(handoff.subprocess, "run", lambda *args, **kw:
+                        SimpleNamespace(returncode=0, stdout="JobId=101 UserId=owner(123) JobState=RUNNING", stderr=""))
+    assert handoff.job_state(101) == "RUNNING"
+    monkeypatch.setattr(handoff.subprocess, "run", lambda *args, **kw:
+                        SimpleNamespace(returncode=0, stdout="JobId=101 UserId=other(456) JobState=RUNNING", stderr=""))
+    with pytest.raises(RuntimeError, match="another user"):
+        handoff.job_state(101)
+
+
+def test_controller_failure_is_not_misread_as_archived_job(monkeypatch):
+    monkeypatch.setattr(handoff.subprocess, "run", lambda *args, **kw:
+                        SimpleNamespace(returncode=1, stdout="", stderr="Unable to contact slurm controller"))
+    with pytest.raises(RuntimeError, match="Cannot query"):
         handoff.job_state(101)
 
 
