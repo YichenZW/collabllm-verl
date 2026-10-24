@@ -7,12 +7,16 @@ import signal
 import subprocess
 
 from reproduction.common import ROOT
+from reproduction.code_dependencies import overlay_identity
 
 
 @functools.lru_cache(maxsize=1)
 def harness_identity():
-    return {name: hashlib.sha256((ROOT / "reproduction" / name).read_bytes()).hexdigest()
-            for name in ["check_code.py", "code_executor.py", "code_network.py", "code_runtime.py"]}
+    identity = {name: hashlib.sha256((ROOT / "reproduction" / name).read_bytes()).hexdigest()
+            for name in ["check_code.py", "code_executor.py", "code_network.py", "code_runtime.py",
+                         "code_dependencies.py", "code_reference_policy.py", "code_reference_issues.json"]}
+    identity["dependency_overlay"] = overlay_identity()
+    return identity
 
 
 def run_check(data, env, timeout=300):

@@ -4,9 +4,11 @@ import io
 import json
 import sys
 from pathlib import Path
-from bigcodebench.eval import untrusted_check
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from reproduction.code_dependencies import activate_overlay
+activate_overlay()
+from bigcodebench.eval import untrusted_check
 from reproduction.code_executor import harness_identity
 from reproduction.code_network import configure_fixture_http
 from reproduction.code_runtime import install_execution_compat

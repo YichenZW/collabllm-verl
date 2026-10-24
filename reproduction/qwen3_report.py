@@ -5,6 +5,7 @@ from collections import defaultdict
 
 from reproduction import report
 from reproduction.common import ROOT, RUNS, atomic_json
+from reproduction.code_executor import harness_identity
 
 VARIANTS = ("base", "proactive", "sft", "offline_dpo")
 TASKS = ("math-hard", "bigcodebench", "medium")
@@ -16,6 +17,13 @@ def paired_results(rows):
     for row in rows:
         if row["n"] != row["expected"] or row["failed"]:
             continue
+        if row["task"] == "bigcodebench":
+            samples = [json.loads(p.read_text()) for p in
+                       (RUNS / row["run"] / "samples").glob("*.json")]
+            if len(samples) != row["expected"] or any(
+                    not s.get("completed") or s.get("code_harness") != harness_identity()
+                    for s in samples):
+                continue
         key = (row["task"], row["run"].split("/")[0], row["user"], row["judge"])
         groups[key][row["variant"]] = row
     selected = {}
@@ -53,6 +61,8 @@ def main():
         "BF16 and modern TRL replace the archived NF4 training implementation",
         "Archived training data and original test splits are retained; code overlap sensitivity is reported separately",
         "Code execution retains original tests with documented HTTP-header and owned-child cleanup compatibility fixes; code_harness hashes identify rescored outputs",
+        "Private setuptools80.9 overlay restores archived librosa pkg_resources imports; shared packages remain unchanged",
+        "Audited BigCodeBench/111 and /276 reference/test inconsistencies retain original candidate scoring and enter a separate sensitivity analysis",
         "Only fully completed four-method comparisons enter primary_results; individual and partial runs remain available",
         "PPO/Online DPO are not measured unless a full training and evaluation record explicitly exists",
         "The API ledger includes conservative reservations; usage-derived expenses are estimates, not provider invoices",

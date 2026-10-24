@@ -67,6 +67,30 @@ source hashes; stale local scores and canonical caches are recomputed without
 additional model/judge API calls. Timed-out checks terminate their own isolated
 process group, including children, rather than leaving a blocked Pool behind.
 
+Full validation also exposed a removed dependency: librosa 0.10.1 imports
+`pkg_resources`, which is absent from the shared environment's setuptools84.
+Install `setuptools==80.9.0` into the private `RUNS/code_python_overlay` using
+`uv pip install --python .venv-code/bin/python --target /absolute/RUNS/code_python_overlay --no-deps setuptools==80.9.0`.
+The checker prepends this overlay and records its package metadata and
+implementation hashes; no shared environment package is changed.
+
+Two unchanged reference solutions fail their own assertions under the pinned
+official dependencies: BigCodeBench/111 masks missing calendar cells in a heatmap,
+whereas its test expects zeros; BigCodeBench/276 returns SciPy's documented NaN
+for constant/singleton skewness and kurtosis, whereas its tests forbid NaN.
+`code_reference_issues.json` binds these findings to exact dataset metadata and
+specific assertion failures. Separate diagnostic candidates pass the unchanged
+tests, and intentionally wrong candidates fail (`code_reference_diagnostics.json`).
+Reference failures stay recorded as failures. The preflight permits only these
+reviewed signatures; unknown errors still stop evaluation. All candidate code is
+scored against every original assertion, and all selected tasks remain in primary
+results. A separate reference-pass subset sensitivity analysis is reported;
+these findings do not determine the evaluation sample size.
+See [SciPy skew](https://docs.scipy.org/doc/scipy-1.10.1/reference/generated/scipy.stats.skew.html),
+[SciPy kurtosis](https://docs.scipy.org/doc/scipy-1.10.1/reference/generated/scipy.stats.kurtosis.html),
+[NumPy masked-list behavior](https://numpy.org/doc/1.23/reference/generated/numpy.ma.MaskedArray.tolist.html),
+and [seaborn heatmap masking](https://seaborn.pydata.org/generated/seaborn.heatmap.html).
+
 Authorized API budgets for this Qwen experiment are $100 OpenAI and $40 Anthropic.
 The user added another $20 Anthropic credit after the initial $20 authorization;
 the authorization history is recorded in `plan.json`. The coordinator

@@ -1,0 +1,32 @@
+{
+  "BigCodeBench/111": {
+    "metadata_digest": "4f04c7f40f5cabe616977e003a9e63fc0969563d070a95d19c788bddd879736b",
+    "description": "Reference heatmap masks missing calendar cells, while the unchanged assertion expects zeros. Filling missing cells in a separate diagnostic candidate satisfies the test.",
+    "failing_tests": [
+      "test_return_value"
+    ],
+    "required_trace_fragments": [
+      "AssertionError: Lists differ:",
+      "First differing element 59:\nNone\n0.0"
+    ],
+    "sources": [
+      "https://numpy.org/doc/1.23/reference/generated/numpy.ma.MaskedArray.tolist.html",
+      "https://seaborn.pydata.org/generated/seaborn.heatmap.html"
+    ]
+  },
+  "BigCodeBench/276": {
+    "metadata_digest": "7a7c88c1601226849c4ebe0293b34a94135912ac31be8be9504d762e17784d23",
+    "description": "Reference uses scipy skew/kurtosis for constant and singleton values, which return NaN as documented. Tests assert non-NaN.",
+    "failing_tests": [
+      "test_case_4",
+      "test_case_5"
+    ],
+    "required_trace_fragments": [
+      "AssertionError: True is not false"
+    ],
+    "sources": [
+      "https://docs.scipy.org/doc/scipy-1.10.1/reference/generated/scipy.stats.skew.html",
+      "https://docs.scipy.org/doc/scipy-1.10.1/reference/generated/scipy.stats.kurtosis.html"
+    ]
+  }
+}

@@ -28,6 +28,7 @@ from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, diges
 from reproduction.budget import metered_call, BudgetExceeded
 from reproduction.response_schema import validate_payload
 from reproduction.code_executor import harness_identity, run_check
+from reproduction.code_reference_policy import reviewed_reference_issue
 
 def main():
     p = argparse.ArgumentParser()
@@ -60,7 +61,9 @@ def main():
         phase=args.phase, job=os.getenv("SLURM_JOB_ID"), hostname=socket.gethostname(),
         started_unix=time.time(), code=source_identity("reproduction/evaluate.py", "reproduction/common.py",
             "reproduction/budget.py", "reproduction/response_schema.py", "reproduction/check_code.py",
-            "reproduction/code_executor.py", "reproduction/code_runtime.py", "reproduction/code_network.py")))
+            "reproduction/code_executor.py", "reproduction/code_runtime.py", "reproduction/code_network.py",
+            "reproduction/code_dependencies.py", "reproduction/code_reference_policy.py",
+            "reproduction/code_reference_issues.json")))
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
@@ -225,12 +228,14 @@ def main():
                 if gold is None or gold.get("harness") != harness_identity():
                     gold = check(gt["answer"])
                 atomic_json(gold_path, gold)
-                if not gold["pass_rate"]:
+                issue = reviewed_reference_issue(gt, gold)
+                if not gold["pass_rate"] and not issue:
                     raise RuntimeError("Canonical code failed; repair evaluation environment before scoring this sample")
                 result = check(answer)
                 metrics["pass_rate"] = result["pass_rate"]
                 state["code_result"] = result["result"]
                 state["code_harness"] = result["harness"]
+                state["code_reference_issue"] = issue
         state.update(metrics=metrics, completed=True)
         atomic_json(target, state)
         print(json.dumps(dict(index=row["index"], **metrics)), flush=True)

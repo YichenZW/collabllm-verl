@@ -49,6 +49,7 @@ def main():
     audit = json.loads((RUNS / "code_split_audit.json").read_text())
     seen = {r["task_id"]: r["seen_in_archived_conversations"] for r in audit["samples"]}
     code = []
+    reference_sensitivity = []
     for (task, variant), row in primary.items():
         if task != "bigcodebench":
             continue
@@ -62,10 +63,22 @@ def main():
             reconstructed_overlap_n=len(samples) - n, nonoverlap_n=n,
             nonoverlap_passed=passed, nonoverlap_pass_rate_percent=100 * passed / n if n else None,
             nonoverlap_wilson95_percent=[100*x if x is not None else None for x in interval]))
+        flagged = [s for s in samples.values() if s.get("code_reference_issue")]
+        reference_clean = [s for s in samples.values() if not s.get("code_reference_issue")]
+        n = len(reference_clean)
+        passed = sum(s["metrics"]["pass_rate"] for s in reference_clean)
+        interval = wilson_interval(passed / n, n) if n else (None, None)
+        reference_sensitivity.append(dict(variant=variant, run=row["run"], total_n=len(samples),
+            flagged_task_ids=[s["input"]["metadata"]["task_id"] for s in flagged],
+            reference_pass_subset_n=n, reference_pass_subset_passed=passed,
+            reference_pass_subset_percent=100 * passed / n if n else None,
+            reference_pass_subset_wilson95_percent=[100*x if x is not None else None for x in interval]))
     result = dict(math_paired=math_pairs, code_nonoverlap_sensitivity=code,
+        code_reference_issue_sensitivity=reference_sensitivity,
         limitations=["One sampled conversation per task/model; no multiple-comparison adjustment",
                      "Code overlap reconstructed from archived source, not public adapter provenance",
                      "Non-overlap code rows are a sensitivity analysis, not a replacement paper split",
+                     "Primary scores retain all original tests, including audited reference inconsistencies; reference-pass subsets are sensitivity analyses only",
                      "Judge/prompt differences still prevent an identical-protocol reproduction"])
     atomic_json(RUNS / "statistical_analysis.json", result)
     print(json.dumps(result, indent=2))
