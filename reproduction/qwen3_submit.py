@@ -12,7 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", required=True)
     parser.add_argument("--time", default="12:00:00")
-    parser.add_argument("--after", nargs="*", type=int, default=[])
+    parser.add_argument("--after", action="append", type=int, default=[])
     parser.add_argument("--constraint", default="a40|a100|h100")
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--mem", default="64G")
