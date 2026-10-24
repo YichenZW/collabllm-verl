@@ -1,4 +1,6 @@
 """Serve and exercise real Qwen SFT/DPO adapters; no external API calls."""
+import argparse
+import concurrent.futures
 import json
 import os
 import signal
@@ -12,6 +14,9 @@ from reproduction.common import RUNS, atomic_json
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--long-context", action="store_true")
+    args = parser.parse_args()
     job = os.environ["SLURM_JOB_ID"]
     port = 20000 + int(job) % 30000
     url = f"http://127.0.0.1:{port}"
@@ -52,9 +57,33 @@ def main():
                 responses[model] = result
             config = json.loads((RUNS / "logs" / f"server-config-{job}-{port}.json").read_text())
             assert config["max_model_len"] == 40960
-            atomic_json(RUNS / "inference_smoke.json", dict(job=job, host=socket.gethostname(),
+            long_responses = []
+            if args.long_context:
+                def long_request(index):
+                    body = dict(model="base", temperature=0, max_tokens=8, seed=42 + index,
+                        messages=[dict(role="user", content="Context item.\n" * 6000 +
+                                       "End of context. Reply only with OK.")])
+                    request = urllib.request.Request(url + "/v1/chat/completions",
+                        data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+                    with opener.open(request, timeout=240) as response:
+                        result = json.load(response)
+                    assert 16000 <= result["usage"]["prompt_tokens"] < config["max_model_len"]
+                    assert result["choices"][0]["message"]["content"].strip()
+                    return dict(usage=result["usage"], response=result["choices"][0]["message"]["content"])
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                    long_responses = list(pool.map(long_request, range(4)))
+            record = dict(job=job, host=socket.gethostname(),
                 native_context=config["max_model_len"], served_models=served, responses=responses,
-                external_api_calls=0, scope="Inference compatibility only, not task accuracy"))
+                concurrent_long_context=long_responses,
+                external_api_calls=0, scope="Inference compatibility only, not task accuracy")
+            previous = RUNS / "inference_smoke.json"
+            if previous.exists():
+                prior = json.loads(previous.read_text())
+                archive = RUNS / f"inference_smoke-{prior['job']}.json"
+                if not archive.exists():
+                    atomic_json(archive, prior)
+            atomic_json(RUNS / f"inference_smoke-{job}.json", record)
+            atomic_json(previous, record)
             print("QWEN_INFERENCE_SMOKE_PASS", models, flush=True)
         finally:
             if server.poll() is None:
