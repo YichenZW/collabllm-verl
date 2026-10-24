@@ -40,6 +40,8 @@ def main():
     p.add_argument("--output", required=True)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--seed-results", help="Reuse saved samples with identical protocol and inputs")
+    p.add_argument("--phase", choices=["all", "generate", "score"], default="all",
+                   help="Separate GPU dialogue generation from prepaid batch scoring")
     args = p.parse_args()
     load_dotenv(ROOT / ".env")
     cfg = TASKS[args.dataset]
@@ -60,6 +62,7 @@ def main():
                     enable_thinking=assets["enable_thinking"], generation_config="vllm")
     manifest.pop("local_url")  # Endpoint location does not change experimental identity.
     manifest.pop("seed_results")
+    manifest.pop("phase")  # Execution phase does not change the experimental protocol.
     manifest_path = out / "manifest.json"
     if manifest_path.exists() and json.loads(manifest_path.read_text()) != manifest:
         raise ValueError("Existing output uses different settings; choose a new output directory")
@@ -133,10 +136,12 @@ def main():
                 input=row, chat=[], completed=False)
         if state.get("completed"):
             return state
+        if args.phase == "score" and not state.get("generated"):
+            raise RuntimeError("Scoring requires a saved, finished conversation")
         chat = state["chat"]
         if not chat and args.variant not in ["base", "proactive"]:
             chat.append(dict(role="system", content=legacy_prompt("llm_assistant/system_prompt.txt")))
-        while len([m for m in chat if m["role"] != "system"]) < 2 * cfg["turns"]:
+        while args.phase != "score" and len([m for m in chat if m["role"] != "system"]) < 2 * cfg["turns"]:
             if chat and "[[TERMINATE CHAT]]" in chat[-1]["content"]:
                 break
             if not chat or chat[-1]["role"] in ["system", "assistant"]:
@@ -160,6 +165,13 @@ def main():
                 raise ValueError("Empty model response")
             chat.append(dict(role=role, content=response.strip()))
             atomic_json(target, state)
+        state["generated"] = True
+        atomic_json(target, state)
+        if args.phase == "generate":
+            return state
+        if args.phase == "score" and ("judge" not in state or
+                (args.dataset != "math-hard" and "extraction" not in state)):
+            raise RuntimeError("Missing prepaid batch judge/extractor result; no synchronous API fallback")
         if "judge" not in state:
             prompt = legacy_prompt(f"llm_judge/{cfg['task']}.txt").format(
                     chat_history="", chat=chat_text(chat), question=row["prompt"], answer=row["completion"])
@@ -219,11 +231,14 @@ def main():
             except Exception as exc:
                 errors.append(dict(index=futures[future], error=f"{type(exc).__name__}: {exc}"))
                 print("FAILED sample", futures[future], type(exc).__name__, flush=True)
-            summary = dict(expected=len(records), completed=len(results), failed=len(errors), errors=errors)
-            if results:
-                summary["metrics"] = {k: dict(mean=float(np.mean([r["metrics"][k] for r in results])),
-                  sem=float(np.std([r["metrics"][k] for r in results], ddof=1)/np.sqrt(len(results))) if len(results)>1 else None)
-                  for k in results[0]["metrics"]}
+            scored = [r for r in results if r.get("completed")]
+            summary = dict(expected=len(records), completed=len(scored),
+                generated=sum(bool(r.get("generated") or r.get("completed")) for r in results),
+                failed=len(errors), errors=errors)
+            if scored:
+                summary["metrics"] = {k: dict(mean=float(np.mean([r["metrics"][k] for r in scored])),
+                  sem=float(np.std([r["metrics"][k] for r in scored], ddof=1)/np.sqrt(len(scored))) if len(scored)>1 else None)
+                  for k in scored[0]["metrics"]}
             atomic_json(out / "summary.json", summary)
     if errors:
         raise RuntimeError(f"{len(errors)} samples failed; saved partial results can be resumed")

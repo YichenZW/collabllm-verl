@@ -13,6 +13,7 @@ limit=${2:?sample count required}
 variants=${3:-base,proactive,sft,offline_dpo}
 seed_root=${4:-$COLLABLLM_RUNS/no-seed}
 workers=${5:-4}
+phase=${6:-all}
 port=$((20000 + SLURM_JOB_ID % 30000))
 IFS=',' read -ra modes <<< "$variants"
 adapters=()
@@ -27,6 +28,7 @@ for variant in "${modes[@]}"; do
     esac
 done
 bash reproduction/gpu_check.sh
+python -c 'import torch; assert torch.cuda.is_available(); print(torch.zeros(1, device="cuda"))'
 python -c 'from reproduction.budget import rpc; print(rpc("health", {}))'
 python -m reproduction.serve --port "$port" "${adapters[@]}" > "$COLLABLLM_RUNS/logs/server-$task-$SLURM_JOB_ID.log" 2>&1 &
 server_pid=$!
@@ -53,5 +55,6 @@ for variant in "${modes[@]}"; do
     fi
     python -m reproduction.evaluate --dataset "$task" --variant "$variant" \
         --model "$model" --local-url "http://127.0.0.1:$port/v1" --limit "$limit" \
-        --workers "$workers" --output "$COLLABLLM_RUNS/eval-$limit/$task/$variant" "${seed_args[@]}"
+        --workers "$workers" --phase "$phase" \
+        --output "$COLLABLLM_RUNS/eval-$limit/$task/$variant" "${seed_args[@]}"
 done

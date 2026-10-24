@@ -64,3 +64,25 @@ Refresh the machine-readable run status without any API calls:
 ```bash
 .venv/bin/python -m reproduction.qwen3_status
 ```
+
+Larger evaluations can separate GPU generation from Claude Message Batch scoring.
+The batch requests use the identical model snapshot, prompts, temperature and
+maximum output length as the synchronous pilot, at the provider's 50% batch rate.
+Transport is recorded per response. Each request is reserved before submission;
+an unknown submission keeps all reservations and requires inspection. A single
+controller owns the batch manifests. Refreshes are idempotent, and local scoring
+refuses to fall back to additional paid API calls.
+
+```bash
+# Within a GPU allocation, first generate a paired fixed-prefix expansion:
+bash reproduction/qwen3_eval.sh math-hard 32 base,proactive,sft,offline_dpo /net/spaces/scratch/yichenzw-scratch2/collabllm-qwen3-4b-runs/eval-8 4 generate
+# Submit and later refresh from a CPU process; do not run controllers concurrently:
+.venv/bin/python -m reproduction.qwen3_batch --roots /net/spaces/scratch/yichenzw-scratch2/collabllm-qwen3-4b-runs/eval-32 --submit
+.venv/bin/python -m reproduction.qwen3_batch
+.venv/bin/python -m reproduction.qwen3_finalize --roots /net/spaces/scratch/yichenzw-scratch2/collabllm-qwen3-4b-runs/eval-32
+```
+
+Submit immutable copies of shell launchers, so later edits cannot alter a running
+Bash script. Initial job 2237770 failed from such a live edit before evaluation;
+2237776 failed during CUDA initialization on r001, also before any paid evaluation.
+The replacement uses GPU types already validated with this pinned environment.

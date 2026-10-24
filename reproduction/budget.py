@@ -21,7 +21,8 @@ from reproduction.common import RUNS
 
 # USD per million input / output tokens. Cache discounts deliberately ignored.
 RATES = {"gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0),
-         "claude-sonnet-4-5-20250929": (3.0, 15.0)}
+         "claude-sonnet-4-5-20250929": (3.0, 15.0),
+         "claude-sonnet-4-5-20250929@batch": (1.5, 7.5)}
 CAP_MICRO = 118_000_000  # New experiment only; historical ledgers are separate.
 PROVIDER_CAP_MICRO = {"openai": 99_000_000, "anthropic": 19_000_000}
 PRIOR_PROBES_MICRO = 0  # Every new probe uses the reservation guard.
