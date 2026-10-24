@@ -55,6 +55,12 @@ bash reproduction/qwen3_eval.sh bigcodebench 8
 
 Writing and expansion use the same scripts. Evaluation expansions accept a prior
 `eval-N` directory as the fourth argument and reuse samples only when model,
-protocol, task inputs, and judge identities match. The initial API preflight found
-Claude Sonnet 4.5 available and the saved OpenAI credential returning HTTP 401;
-paid-user simulations wait for an updated OpenAI configuration.
+protocol, task inputs, and judge identities match. An initial OpenAI credential
+returned HTTP 401. After the user updated the private configuration, GPT-4o-mini,
+GPT-4o, and Claude Sonnet 4.5 all passed metered availability probes.
+
+Refresh the machine-readable run status without any API calls:
+
+```bash
+.venv/bin/python -m reproduction.qwen3_status
+```

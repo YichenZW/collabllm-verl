@@ -28,7 +28,7 @@ for variant in "${modes[@]}"; do
 done
 bash reproduction/gpu_check.sh
 python -c 'from reproduction.budget import rpc; print(rpc("health", {}))'
-python -m reproduction.serve --port "$port" "${adapters[@]}" > "$COLLABLLM_RUNS/logs/server-$SLURM_JOB_ID.log" 2>&1 &
+python -m reproduction.serve --port "$port" "${adapters[@]}" > "$COLLABLLM_RUNS/logs/server-$task-$SLURM_JOB_ID.log" 2>&1 &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
 python - "$port" "$server_pid" <<'PY'
