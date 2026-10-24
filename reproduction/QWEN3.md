@@ -54,6 +54,11 @@ global step and history; the resumed Trainer loss is not a reconstructed mean
 over all original and resumed updates. A separate GPU smoke check verifies checkpoint loading
 and subsequent optimizer/adapter updates without making external API calls.
 
+Live job state and ownership are checked with `scontrol`; `sacct` is only the
+fallback for jobs no longer retained by the controller. Accounting can lag at
+allocation startup. The first math handoff safely refused this stale state,
+left the source running, and was requeued after the state check was corrected.
+
 An existing pending resume can also perform a controlled GPU handoff after a
 complete epoch checkpoint exists. A request in `RUNS/handoffs/` names the exact
 task, source job and replacement job. Once allocated, the replacement verifies
@@ -199,3 +204,9 @@ Submit immutable copies of shell launchers, so later edits cannot alter a runnin
 Bash script. Initial job 2237770 failed from such a live edit before evaluation;
 2237776 failed during CUDA initialization on r001, also before any paid evaluation.
 The replacement uses GPU types already validated with this pinned environment.
+
+Completed SFT checkpoints can be evaluated before full DPO training finishes:
+`qwen3_sft_eval.sh` runs the already planned 8-sample synchronous pilot followed
+by 32-sample generation using that pilot as its seed. Subsequent joint SFT/DPO
+stages depend on this stage and reuse its saved SFT results; sample counts and
+API work are unchanged. This only changes scheduling, not the protocol.
