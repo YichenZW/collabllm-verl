@@ -171,6 +171,17 @@ to the primary `--limit` stage; any extra-stage requests remain in the durable
 batch manifests for the next stage. SIGTERM requests a clean stop after the
 current operation finishes, without interrupting a reserved API submission.
 
+Expansion decisions are recorded before generating additional samples. The
+current approved targets are math200 and code100 for all four offline methods.
+Code100 uses the actual new24-sample batch costs from completed Base/Proactive32,
+the higher original pilot projection, and a 50% margin. Its planning calculation
+also includes outstanding trained32 evaluations, full math200, and a $10 writing
+allowance (`code100_cost_decision.json`). This is an estimate, subject to the
+provider hard caps. Larger code targets await all four methods' measured costs.
+Only fully scored seed stages are copied, avoiding duplicate judge requests.
+The worker can watch both `eval-200` and `eval-100` as extra roots while the
+trained32 comparisons finish.
+
 Submit immutable copies of shell launchers, so later edits cannot alter a running
 Bash script. Initial job 2237770 failed from such a live edit before evaluation;
 2237776 failed during CUDA initialization on r001, also before any paid evaluation.
