@@ -17,7 +17,7 @@ from nltk.translate.bleu_score import sentence_bleu
 from reproduction.budget import status
 from reproduction.code_executor import harness_identity
 from reproduction.code_reference_policy import reviewed_reference_issue
-from reproduction.common import RUNS, TASKS, atomic_json, digest
+from reproduction.common import RUNS, TASKS, atomic_json, digest, legacy_prompt
 from reproduction.judge_protocol import VERSION, load_score, score_params
 
 VARIANTS = ("base", "proactive", "sft", "offline_dpo")
@@ -31,6 +31,23 @@ def require(condition, message):
 def same_number(actual, expected, label):
     require(isinstance(actual, (int, float)) and math.isfinite(actual)
             and math.isclose(actual, expected, rel_tol=1e-10, abs_tol=1e-12), label)
+
+
+def validate_dialogue(task, variant, sample):
+    chat = sample["chat"]
+    turns = [message for message in chat if message["role"] != "system"]
+    require(0 < len(turns) <= 2 * TASKS[task]["turns"], "Wrong conversation length")
+    system = [] if variant in ["base", "proactive"] else [
+        dict(role="system", content=legacy_prompt("llm_assistant/system_prompt.txt"))]
+    require(chat == system + turns, "Wrong system prompt or placement")
+    require(all(message["role"] == ("user" if i % 2 == 0 else "assistant")
+                for i, message in enumerate(turns)), "Wrong conversation role order")
+    require(all(isinstance(message["content"], str) and message["content"].strip()
+                for message in turns), "Empty conversation message")
+    require(not any("[[TERMINATE CHAT]]" in message["content"] for message in turns[:-1]),
+            "Conversation continued after termination")
+    require(len(turns) == 2 * TASKS[task]["turns"] or "[[TERMINATE CHAT]]" in turns[-1]["content"],
+            "Incomplete conversation marked generated")
 
 
 def sample_metrics(task, sample, manifest, encoder):
@@ -91,6 +108,8 @@ def evaluation_audit(task, variant, limit, assets, encoder):
             continue
         sample = json.loads(path.read_text())
         require(sample["input"] == row and sample["index"] == row["index"], "Changed test input")
+        if sample.get("generated") or sample.get("completed"):
+            validate_dialogue(task, variant, sample)
         if not sample.get("completed"):
             continue
         rows.append(sample_metrics(task, sample, manifest, encoder))

@@ -60,6 +60,8 @@ def main():
     data["caveats"] = [
         "An omitted Claude JSON-format wrapper was corrected; superseded scores are archived and all primary scores require the restored archived wrapper",
         "Qwen/Qwen3-4B non-thinking replaces paper Llama-3.1-8B-Instruct; paper values are context, not controlled comparisons",
+        "vLLM and deterministic per-request assistant seeds retain the prior reproduction pipeline; they do not reproduce archived local-HF random streams",
+        "Proactive Base applies the intended archived proactive prompt; the archived local-HF branch ignored prompt_method",
         "Claude Sonnet 4.5 replaces retired Claude 3.5; the initial pilot is synchronous and expansions use Message Batches",
         "Archived task-specific judge prompts differ from paper v3 Appendix D.4; historical ITR scaling is preserved",
         "Single seed; paired fixed-prefix subsets selected by API cost, not outcomes; sampling uncertainty remains",

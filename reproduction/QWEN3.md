@@ -37,7 +37,19 @@ TRL appends the completion EOS. The local model view forces `enable_thinking=fal
 in the official template. Original cached model weights and tokenizer files are
 not edited. vLLM uses its default generation config rather than inheriting Qwen's
 recommended sampling settings, while the evaluation passes the original task
-temperature, top-p, output-length, and random-seed settings explicitly.
+temperature, top-p and output-length settings explicitly. This retains the prior
+reproduction's vLLM engine. Assistant requests use the deterministic seed
+`42 + test_index * 100 + len(chat)`. The archived evaluator uses seed42 for test
+selection without explicitly seeding local HF generation; this is not a claim
+of identical inference random streams or decoding-engine defaults.
+
+Proactive Base explicitly applies the archived `proact.txt` prompt, matching the
+intended paper baseline. The archived local-HF branch ignores `prompt_method`;
+the prior reproduction already documented and corrected that branch behavior.
+An audit of the first 654 unique completed conversations checked original chat
+serialization, role order, turn limits, termination and method-specific system
+prompts (`generation_protocol_audit.json`). This snapshot does not stand in for
+checking conversations generated later.
 
 The initial baseline pilot used a 16,384-token serving capacity. New servers use
 Qwen's native 40,960-token capacity, so long writing conversations are not rejected

@@ -40,3 +40,16 @@ def test_actual_score_requires_exact_paid_request_and_original_metrics(tmp_path,
         corrupt(changed)
         with pytest.raises(ValueError):
             qwen3_audit.sample_metrics("math-hard", changed, manifest, encoder)
+
+
+def test_generated_dialogues_must_obey_original_stop_rules():
+    chat = [dict(role="user", content="Question"), dict(role="assistant", content="Answer"),
+            dict(role="user", content="[[TERMINATE CHAT]]")]
+    qwen3_audit.validate_dialogue("math-hard", "base", dict(chat=chat))
+    with pytest.raises(ValueError, match="continued after termination"):
+        qwen3_audit.validate_dialogue("math-hard", "base",
+            dict(chat=chat + [dict(role="assistant", content="Another response")]))
+    with pytest.raises(ValueError, match="Incomplete conversation"):
+        qwen3_audit.validate_dialogue("math-hard", "base", dict(chat=chat[:2]))
+    with pytest.raises(ValueError, match="system prompt"):
+        qwen3_audit.validate_dialogue("math-hard", "sft", dict(chat=chat))
