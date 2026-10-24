@@ -30,7 +30,8 @@ def main():
     record = dict(updated=datetime.now(ZoneInfo("America/Chicago")).isoformat(),
         jobs=jobs, budget=status(), evaluations=evaluations, training=training)
     for field, name in [("cpu_preflight", "preflight.json"), ("api_probe", "api_probe.json"),
-                        ("gpu_smoke", "training_smoke.json")]:
+                        ("gpu_smoke", "training_smoke.json"), ("resume_smoke", "resume_smoke.json"),
+                        ("batch_worker", "batch_worker.json")]:
         path = RUNS / name
         record[field] = json.loads(path.read_text()) if path.exists() else None
     atomic_json(RUNS / "status.json", record)

@@ -39,6 +39,17 @@ New long-context evaluation jobs request one A100/H100, matching the successful
 80 GB inference check. Writing training also requests this memory class for its
 longer sequences; automatic microbatch sizing retains effective batch size 64.
 
+The cluster has a 12-hour job limit. Conditional DPO resume jobs run after the
+original allocation ends. They skip models whose full schedule and final artifacts
+already exist; otherwise they restore the latest complete checkpoint, including
+optimizer, scheduler and RNG state. All saved training arguments, including the
+original microbatch and accumulation sizes, are preserved even on another GPU
+type. Incomplete checkpoint writes are ignored. Evaluation depends on the full
+training/resume chain. `resumes/` records any continuation; resumed train loss and
+runtime describe the resumed segment, while `trainer_state.json` retains the
+global step and history. A separate GPU smoke check verifies checkpoint loading
+and subsequent optimizer/adapter updates without making external API calls.
+
 Authorized API budgets for this Qwen experiment are $100 OpenAI and $40 Anthropic.
 The user added another $20 Anthropic credit after the initial $20 authorization;
 the authorization history is recorded in `plan.json`. The coordinator
