@@ -148,6 +148,19 @@ counts and the limits of that estimate. The final epoch is evaluated for our
 training runs; published configurations also reference intermediate checkpoints
 whose complete selection history is unavailable.
 
+Run the budget coordinator and batch worker in independent Slurm CPU jobs so
+they survive a change of login session. On October 24, the execution host changed
+from fe01 to fe02 and the original coordinator disappeared; math generation
+stopped when it could no longer reserve API costs. CPU jobs 2238199 and 2238201
+restored the coordinator and sole scoring worker. The ledger was verified
+byte-identical across recovery, all outstanding reservations and submitted batch
+IDs were retained, and failed math job 2237792 resumed its saved conversations.
+`RUNS/runtime/recovery-20261024-0642/recovery.json` records the evidence. The
+coordinator entry point is `bash reproduction/budget_service.sh`; its working
+directory resolves to this checkout. Do not start another coordinator or scorer
+while its existing job is live. Release the coordinator allocation when all
+paid work and batch settlement are finished.
+
 Run CPU validation before releasing the GPU smoke job:
 
 ```bash
