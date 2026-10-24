@@ -108,6 +108,18 @@ source hashes; stale local scores and canonical caches are recomputed without
 additional model/judge API calls. Timed-out checks terminate their own isolated
 process group, including children, rather than leaving a blocked Pool behind.
 
+During code200 evaluation, Proactive sample index243 reached the official
+approximately 241-second test timeout. The checker exited successfully with its
+native `timeout` result, but an orphaned child kept its output pipe open.
+Operational cleanup verified the exited checker's zero exit code, process group,
+and orphan ownership before sending SIGTERM to that orphan. The unchanged native
+timeout was then recorded as a failed candidate, and the evaluation completed
+without an execution error. `RUNS/code200_orphan_cleanup.json` preserves the
+evidence. The bounded runtime observer in
+`RUNS/runtime/watch-exited-code200-checkers.py` handles the same condition only
+after observing a known checker exit successfully; it does not change test
+timeouts, candidate outputs, assertions, or the versioned code harness.
+
 Full validation also exposed a removed dependency: librosa 0.10.1 imports
 `pkg_resources`, which is absent from the shared environment's setuptools84.
 Install `setuptools==80.9.0` into the private `RUNS/code_python_overlay` using
