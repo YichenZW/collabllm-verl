@@ -140,6 +140,13 @@ recorded under the run directory.
 .venv/bin/python -m reproduction.qwen3_batch_worker --limit 32 --tasks math-hard bigcodebench
 ```
 
+Once a larger stage is recorded in `plan.json`, `--extra-roots` can score its
+generated conversations concurrently. For example, add the absolute `eval-200`
+directory for the approved full math expansion. Worker completion still refers
+to the primary `--limit` stage; any extra-stage requests remain in the durable
+batch manifests for the next stage. SIGTERM requests a clean stop after the
+current operation finishes, without interrupting a reserved API submission.
+
 Submit immutable copies of shell launchers, so later edits cannot alter a running
 Bash script. Initial job 2237770 failed from such a live edit before evaluation;
 2237776 failed during CUDA initialization on r001, also before any paid evaluation.
