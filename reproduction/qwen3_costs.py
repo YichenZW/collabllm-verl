@@ -4,6 +4,41 @@ from collections import defaultdict
 
 from reproduction.budget import rates, status
 from reproduction.common import RUNS, atomic_json
+from reproduction.judge_protocol import VERSION, load_score, score_params
+
+
+def scoring_costs_from_samples(directory):
+    """Measure current scoring even when a paid result was reused from another stage.
+
+    This is a per-sample expansion estimate, not an invoice total: overlapping
+    stages refer to the same cache entries. The ledger alone totals all spending.
+    """
+    manifest = json.loads((directory / "manifest.json").read_text())
+    summary = json.loads((directory / "summary.json").read_text())
+    if manifest.get("scoring_protocol") != VERSION or summary.get("scoring_protocol") != VERSION:
+        raise ValueError("Cost sizing requires the corrected scoring protocol")
+    if summary["completed"] != summary["expected"] or summary["failed"]:
+        raise ValueError("Cost sizing requires a completed evaluation stage")
+    task, judge = manifest["dataset"], manifest["judge"]
+    lines, keys = [], []
+    samples = list((directory / "samples").glob("*.json"))
+    if len(samples) != summary["expected"]:
+        raise ValueError("Unexpected sample count for cost sizing")
+    for path in samples:
+        sample = json.loads(path.read_text())
+        if not sample.get("completed") or sample.get("scoring_protocol") != VERSION:
+            raise ValueError("Sample scoring is not current and complete")
+        for kind in (["judge"] if task == "math-hard" else ["judge", "extract"]):
+            cached = load_score(score_params(task, sample, kind, judge))
+            if cached is None or sample.get("score_requests", {}).get(kind) != cached["request_key"]:
+                raise ValueError("Missing current scoring cost provenance")
+            metadata = cached["metadata"]
+            lines.append(json.dumps(dict(kind=kind, model=judge, usage=metadata["usage"],
+                                         transport=metadata["transport"])))
+            keys.append(cached["request_key"])
+    result = summarize_usage(lines, summary["completed"])
+    return dict(n=summary["completed"], scoring_protocol=VERSION, request_keys=keys,
+                **{k: v for k, v in result.items() if k != "openai_per_sample_usd"})
 
 
 def summarize_usage(lines, n):
@@ -43,11 +78,16 @@ def main():
         summary = json.loads(summary_path.read_text())
         if summary["completed"] != summary["expected"] or summary["failed"]:
             continue
+        if protocol.get("scoring_protocol") != VERSION or summary.get("scoring_protocol") != VERSION:
+            continue
         n = summary["completed"]
-        records.append(dict(task=protocol["dataset"], variant=protocol["variant"], n=n,
-            **summarize_usage(usage_path.read_text().splitlines(), n)))
+        historical = summarize_usage(usage_path.read_text().splitlines(), n)
+        current = scoring_costs_from_samples(manifest.parent)
+        records.append(dict(task=protocol["dataset"], variant=protocol["variant"],
+            openai_per_sample_usd=historical["openai_per_sample_usd"],
+            usage_history_usd=historical["usd"], **current))
     result = dict(pilot_costs=records, budget=status(),
-        caveat="Pilot means are projections, not guarantees; input/output lengths vary. Synchronous-equivalent and batch-projected costs account for each call's actual transport; observed cost is reported separately. Advance reservation caps still govern every request.")
+        caveat="Pilot means are projections, not guarantees; input/output lengths vary. Current scoring costs come from exact cached requests, including cross-stage reuse, and exclude superseded scoring from projections. Do not sum overlapping stages as invoice totals; the ledger includes all old and new charges. Transport discounts are applied once. Advance reservation caps govern every request.")
     atomic_json(RUNS / "cost_pilot.json", result)
     print(json.dumps(result, indent=2))
 
