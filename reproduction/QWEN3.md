@@ -35,8 +35,11 @@ or prompts; successfully completed pilot samples did not hit the smaller capacit
 Each new server saves its exact command and context limit alongside its logs.
 Server and evaluation processes also record the code commit and source hashes
 at process start; the submission's commit alone does not freeze Python imports.
-New long-context evaluation jobs request one A100/H100, matching the successful
-80 GB inference check. Writing training also requests this memory class for its
+Initial inference used an A100 80 GB. A subsequent A40 check also passed native
+40,960-token serving, real SFT/DPO adapters, and four concurrent 18,021-token
+prompts. Its profiled KV cache supports 4.99 simultaneous native-length requests.
+New inference jobs therefore accept one A40/A100/H100; each runtime records its
+hardware and configuration. Writing training still requests A100/H100 for its
 longer sequences; automatic microbatch sizing retains effective batch size 64.
 
 The cluster has a 12-hour job limit. Conditional DPO resume jobs run after the

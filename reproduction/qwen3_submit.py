@@ -22,7 +22,7 @@ def main():
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.constraint is None:
-        args.constraint = "a100|h100" if args.script in ["qwen3_eval.sh", "qwen3_inference_smoke.sh"] else "a40|a100|h100"
+        args.constraint = "a100|h100" if args.script == "qwen3_inference_smoke.sh" else "a40|a100|h100"
     if not re.fullmatch(r"qwen4b-[a-z0-9-]+", args.name):
         raise ValueError("Use an experiment-specific job name")
     launch = RUNS / "runtime/launches" / uuid.uuid4().hex
