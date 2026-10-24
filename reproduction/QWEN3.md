@@ -200,6 +200,13 @@ instead of silently reducing the comparison to their intersection. These tests
 use one saved conversation per task/model and do not measure variation between
 training or API reruns. Reporting makes no model API calls.
 
+After refreshing the completed three-task report, run
+`.venv-code/bin/python -m reproduction.qwen3_plot` to export PNG, SVG, and PDF
+comparisons under `RUNS/figures/qwen3_table1_comparison.*`. The plot records its
+source data separately, displays the actual sample counts, and distinguishes
+Qwen measurements from paper reference values. It uses 95% Wilson intervals for
+math/code and one standard error for writing BLEU.
+
 The Qwen-specific evidence auditor checks saved training schedules, exact paid
 scoring cache requests and payloads, original metric calculations, reference-test
 provenance, report values and provider caps. It makes no model API calls:
