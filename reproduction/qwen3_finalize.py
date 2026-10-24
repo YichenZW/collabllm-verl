@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from reproduction.common import ROOT, RUNS
+from reproduction.code_executor import harness_identity
 
 
 def readiness(directory):
@@ -19,7 +20,8 @@ def readiness(directory):
         if not path.exists():
             continue
         sample = json.loads(path.read_text())
-        if sample.get("completed"):
+        if sample.get("completed") and (protocol["dataset"] != "bigcodebench" or
+                                        sample.get("code_harness") == harness_identity()):
             completed += 1
             ready += 1
         elif sample.get("generated") and "judge" in sample and (

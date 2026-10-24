@@ -52,6 +52,7 @@ def main():
         "Single seed; paired fixed-prefix subsets selected by API cost, not outcomes; sampling uncertainty remains",
         "BF16 and modern TRL replace the archived NF4 training implementation",
         "Archived training data and original test splits are retained; code overlap sensitivity is reported separately",
+        "Code execution retains original tests with documented HTTP-header and owned-child cleanup compatibility fixes; code_harness hashes identify rescored outputs",
         "Only fully completed four-method comparisons enter primary_results; individual and partial runs remain available",
         "PPO/Online DPO are not measured unless a full training and evaluation record explicitly exists",
         "The API ledger includes conservative reservations; usage-derived expenses are estimates, not provider invoices",

@@ -6,6 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 from reproduction.common import ROOT, RUNS, atomic_json
+from reproduction.code_executor import harness_identity, run_check
 
 def main():
     p = argparse.ArgumentParser()
@@ -21,14 +22,19 @@ def main():
     def run(row):
         path = args.output / f"{row['index']:04d}.json"
         gt = row["metadata"]
-        if path.exists():
-            result = json.loads(path.read_text())
-        else:
-            proc = subprocess.run([str(ROOT / ".venv-code/bin/python"),
-                str(ROOT / "reproduction/check_code.py")],
-                input=json.dumps(dict(answer=gt["answer"], test=gt["test"], entry_point=gt["entry_point"])),
-                capture_output=True, text=True, timeout=300, env=env, check=True)
-            result = json.loads(proc.stdout)
+        result = json.loads(path.read_text()) if path.exists() else None
+        if result is None or result.get("harness") != harness_identity():
+            previous = result
+            try:
+                result = run_check(dict(answer=gt["answer"], test=gt["test"],
+                                        entry_point=gt["entry_point"]), env)
+            except Exception as exc:
+                atomic_json(args.output / "errors" / f"{row['index']:04d}.json",
+                    dict(index=row["index"], task=gt["task_id"], error=f"{type(exc).__name__}: {exc}",
+                         harness=harness_identity()))
+                raise
+            if previous is not None:
+                result["previous_validation"] = previous
             atomic_json(path, result)
         print(json.dumps(dict(index=row["index"], task=gt["task_id"], **result)), flush=True)
         return result["pass_rate"]

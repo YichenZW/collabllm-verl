@@ -53,6 +53,20 @@ runtime describe the resumed segment, while `trainer_state.json` retains the
 global step and history. A separate GPU smoke check verifies checkpoint loading
 and subsequent optimizer/adapter updates without making external API calls.
 
+The full code reference preflight exposed two environment problems beyond the
+initial 32 samples: BigCodeBench/363 could hang when the upstream process guard
+blocked cleanup of multiprocessing.Pool workers; BigCodeBench/1005's ZIP host
+returned HTTP 403 for Python's default User-Agent. The experiment-local checker
+allows cleanup only within the test's own descendant process tree, limits default
+Pool size to two CPUs, and uses a browser default User-Agent only for the original
+getsamplefiles.com host. Other hosts and explicit candidate headers are preserved.
+Original prompts, reference code, URLs and assertions remain unchanged. Both real
+references passed isolated checks and intentionally wrong implementations failed.
+The installed shared package is untouched. Every code result records the checker
+source hashes; stale local scores and canonical caches are recomputed without
+additional model/judge API calls. Timed-out checks terminate their own isolated
+process group, including children, rather than leaving a blocked Pool behind.
+
 Authorized API budgets for this Qwen experiment are $100 OpenAI and $40 Anthropic.
 The user added another $20 Anthropic credit after the initial $20 authorization;
 the authorization history is recorded in `plan.json`. The coordinator

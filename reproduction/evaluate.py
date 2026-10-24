@@ -27,6 +27,7 @@ from collabllm.utils.extract_json_reliable import extract_json
 from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, digest, legacy_prompt, source_identity
 from reproduction.budget import metered_call, BudgetExceeded
 from reproduction.response_schema import validate_payload
+from reproduction.code_executor import harness_identity, run_check
 
 def main():
     p = argparse.ArgumentParser()
@@ -58,7 +59,8 @@ def main():
     atomic_json(out / "executions" / f"{args.phase}-{uuid.uuid4().hex}.json", dict(
         phase=args.phase, job=os.getenv("SLURM_JOB_ID"), hostname=socket.gethostname(),
         started_unix=time.time(), code=source_identity("reproduction/evaluate.py", "reproduction/common.py",
-            "reproduction/budget.py", "reproduction/response_schema.py")))
+            "reproduction/budget.py", "reproduction/response_schema.py", "reproduction/check_code.py",
+            "reproduction/code_executor.py", "reproduction/code_runtime.py", "reproduction/code_network.py")))
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
@@ -140,7 +142,14 @@ def main():
         state = json.loads(target.read_text()) if target.exists() else dict(index=row["index"],
                 input=row, chat=[], completed=False)
         if state.get("completed"):
-            return state
+            if args.dataset != "bigcodebench" or state.get("code_harness") == harness_identity():
+                return state
+            state.setdefault("code_previous_evaluations", []).append(dict(
+                harness=state.get("code_harness", "legacy-unversioned"), metrics=state.get("metrics"),
+                result=state.get("code_result")))
+            state["completed"] = False
+            state.pop("metrics", None)
+            atomic_json(target, state)
         if args.phase == "score" and not state.get("generated"):
             raise RuntimeError("Scoring requires a saved, finished conversation")
         chat = state["chat"]
@@ -209,19 +218,19 @@ def main():
                 env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="")
                 def check(candidate):
                     with code_slot:
-                        proc = subprocess.run([str(ROOT / ".venv-code/bin/python"),
-                                str(ROOT / "reproduction/check_code.py")],
-                                input=json.dumps(dict(answer=candidate, test=gt["test"], entry_point=gt["entry_point"])),
-                                capture_output=True, text=True, timeout=300, env=env, check=True)
-                    return json.loads(proc.stdout)
+                        return run_check(dict(answer=candidate, test=gt["test"],
+                                              entry_point=gt["entry_point"]), env)
                 gold_path = code_validation_dir / f"{row['index']:04d}.json"
-                gold = json.loads(gold_path.read_text()) if gold_path.exists() else check(gt["answer"])
+                gold = json.loads(gold_path.read_text()) if gold_path.exists() else None
+                if gold is None or gold.get("harness") != harness_identity():
+                    gold = check(gt["answer"])
                 atomic_json(gold_path, gold)
                 if not gold["pass_rate"]:
                     raise RuntimeError("Canonical code failed; repair evaluation environment before scoring this sample")
                 result = check(answer)
                 metrics["pass_rate"] = result["pass_rate"]
                 state["code_result"] = result["result"]
+                state["code_harness"] = result["harness"]
         state.update(metrics=metrics, completed=True)
         atomic_json(target, state)
         print(json.dumps(dict(index=row["index"], **metrics)), flush=True)
