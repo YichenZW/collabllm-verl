@@ -28,6 +28,12 @@ not edited. vLLM uses its default generation config rather than inheriting Qwen'
 recommended sampling settings, while the evaluation passes the original task
 temperature, top-p, output-length, and random-seed settings explicitly.
 
+The initial baseline pilot used a 16,384-token serving capacity. New servers use
+Qwen's native 40,960-token capacity, so long writing conversations are not rejected
+by an artificial smaller limit. This changes capacity, not the task output limits
+or prompts; successfully completed pilot samples did not hit the smaller capacity.
+Each new server saves its exact command and context limit alongside its logs.
+
 New authorized API budgets are $100 OpenAI and $20 Anthropic. The coordinator
 enforces independent $99 and $19 conservative caps, including reservations for
 unknown/failed calls. All probes, simulated users, and judges use this guard.
@@ -35,6 +41,12 @@ An unavailable coordinator fails closed. No allowance from another experiment is
 reused. The user selected retaining Claude scoring, prioritizing math/code paired
 comparisons, then using remaining budget for expansion and writing. Full Table 1
 test sizes and full PPO/Online-DPO training must not be claimed unless completed.
+The user explicitly reconfirmed spending remaining Claude credit on larger
+math/code comparisons, then writing, rather than reduced PPO/Online-DPO runs.
+`online_cost_audit.json` records the archived launchers' nominal reward rollout
+counts and the limits of that estimate. The final epoch is evaluated for our
+training runs; published configurations also reference intermediate checkpoints
+whose complete selection history is unavailable.
 
 Run CPU validation before releasing the GPU smoke job:
 

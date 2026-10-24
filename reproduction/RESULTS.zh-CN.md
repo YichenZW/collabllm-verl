@@ -1,5 +1,8 @@
 **CollabLLM 复现结果汇总**
 
+> 这是此前 Llama-3.1-8B 的历史报告，不是本分支的 Qwen3-4B 结果。Qwen 实验说明见
+> [QWEN3.md](QWEN3.md)，运行结果位于 `/net/spaces/scratch/yichenzw-scratch2/collabllm-qwen3-4b-runs/RESULTS.zh-CN.md`。
+
 整理日期：2026-10-23（America/Chicago）。以下是 2026-10-13 完成并审计的实验结果；本次仅整理已有记录，没有新增训练、评测或付费 API 调用。
 
 **完成范围是预算内的部分复现。** 我们完成了写作、代码、数学三个任务的 SFT 和 Offline DPO 全部预定训练轮次，以及 Base、Proactive Base、自训 SFT、自训 Offline DPO、作者公开适配器的评测。PPO 和 Online DPO 仅完成数学任务上的优化器诊断，没有完整训练或 Table 1 测试成绩。veRL 仅做源码分析，没有训练结果。
