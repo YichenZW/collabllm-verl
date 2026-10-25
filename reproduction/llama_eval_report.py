@@ -72,6 +72,12 @@ def main():
         if record["state"] != "ended":
             active.append(str(path))
     assert not active, active
+    baseline = json.loads((RUNS / "historical_artifact_baseline.json").read_text())
+    assert all(hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected
+               for path, expected in baseline.items()), "Historical report or budget changed"
+    seed_audit = json.loads((RUNS / "seed_audit.json").read_text())
+    assert all(hashlib.sha256(Path(s["path"]).read_bytes()).hexdigest() == s["sha256"]
+               for s in seed_audit["sources"]), "Historical source conversation changed"
     report.main()
     analysis_source = QWEN / "code_split_audit.json"
     audit = RUNS / "code_split_audit.json"
@@ -115,6 +121,9 @@ def main():
         budget=b, active_batches=active, original_results_modified=False,
         report=str(RUNS / "RESULTS.zh-CN.md"), comparison=str(RUNS / "matched_qwen_comparison.csv"))
     atomic_json(RUNS / "COMPLETED.json", completed)
+    plan = json.loads((RUNS / "plan.json").read_text())
+    plan.update(status="complete", completed_at=completed["updated"], completed_artifact=str(RUNS / "COMPLETED.json"))
+    atomic_json(RUNS / "plan.json", plan)
     print(json.dumps(dict(status="complete", completed=2500, budget=b)))
 
 
