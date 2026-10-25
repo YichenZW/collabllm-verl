@@ -47,7 +47,7 @@ def main():
             atomic_json(RUNS / "progress.json", state)
             print("PROGRESS", json.dumps(state), flush=True)
             if finished:
-                subprocess.run([sys.executable, "-m", "reproduction.report"], cwd=ROOT, check=True)
+                subprocess.run([sys.executable, "-m", "reproduction.llama_eval_report"], cwd=ROOT, check=True)
                 return
             time.sleep(30)
         raise RuntimeError("Worker stopped before completion; inspect saved state before resuming")
