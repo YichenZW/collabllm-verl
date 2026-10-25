@@ -31,8 +31,12 @@ def candidates(roots, manifests):
     for root in roots:
         for mp in sorted(Path(root).glob("*/*/manifest.json")):
             protocol = json.loads(mp.read_text())
-            if protocol["judge"] != MODEL or protocol.get("underlying_model") != "Qwen/Qwen3-4B":
-                raise ValueError("Batch scoring requires the pinned Qwen / Claude protocol")
+            # The generator owns sample files until the entire group is done.
+            # This prevents a scorer's write racing a generator resume/write.
+            if not (mp.parent / "generation_complete.json").exists():
+                continue
+            if protocol["judge"] != MODEL or protocol.get("underlying_model") != "meta-llama/Llama-3.1-8B-Instruct":
+                raise ValueError("Batch scoring requires the pinned Llama / Claude protocol")
             if protocol.get("scoring_protocol") != VERSION:
                 raise ValueError("Migrate obsolete scoring before submitting any new calls")
             task = protocol["dataset"]

@@ -23,8 +23,24 @@ from reproduction.common import RUNS
 RATES = {"gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0),
          "claude-sonnet-4-5-20250929": (3.0, 15.0),
          "claude-sonnet-4-5-20250929@batch": (1.5, 7.5)}
-CAP_MICRO = 138_000_000  # New experiment only; historical ledgers are separate.
-PROVIDER_CAP_MICRO = {"openai": 99_000_000, "anthropic": 39_000_000}
+def authorized_caps():
+    """This new stage cannot inherit a previous experiment's allowance."""
+    path = RUNS / "budget_authorization.json"
+    if not path.exists():
+        return {"openai": 0, "anthropic": 0}
+    record = json.loads(path.read_text())
+    if record.get("status") != "authorized" or record.get("scope") != "llama-eval-200-200-100":
+        return {"openai": 0, "anthropic": 0}
+    if not record.get("user_instruction"):
+        raise ValueError("Budget authorization must record the user's instruction")
+    caps = record["provider_cap_micro"]
+    if set(caps) != {"openai", "anthropic"} or any(type(v) is not int or v < 0 for v in caps.values()):
+        raise ValueError("Invalid authorized provider caps")
+    return caps
+
+
+PROVIDER_CAP_MICRO = authorized_caps()
+CAP_MICRO = sum(PROVIDER_CAP_MICRO.values())
 PRIOR_PROBES_MICRO = 0  # Every new probe uses the reservation guard.
 LOCAL_LOCK = threading.RLock()
 

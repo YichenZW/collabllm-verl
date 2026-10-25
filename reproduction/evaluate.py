@@ -70,7 +70,7 @@ def main():
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
     assets = json.loads((RUNS / "assets.json").read_text())
     manifest.update(underlying_model=assets["model_id"], model_revision=assets["revision"],
-                    enable_thinking=assets["enable_thinking"], generation_config="vllm",
+                    enable_thinking=assets["enable_thinking"], generation_config=assets["generation_config"],
                     scoring_protocol=VERSION)
     manifest.pop("local_url")  # Endpoint location does not change experimental identity.
     manifest.pop("seed_results")
@@ -170,7 +170,7 @@ def main():
         chat = state["chat"]
         if not chat and args.variant not in ["base", "proactive"]:
             chat.append(dict(role="system", content=legacy_prompt("llm_assistant/system_prompt.txt")))
-        while args.phase != "score" and len([m for m in chat if m["role"] != "system"]) < 2 * cfg["turns"]:
+        while args.phase != "score" and not state.get("generated") and len([m for m in chat if m["role"] != "system"]) < 2 * cfg["turns"]:
             if chat and "[[TERMINATE CHAT]]" in chat[-1]["content"]:
                 break
             if not chat or chat[-1]["role"] in ["system", "assistant"]:

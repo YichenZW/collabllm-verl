@@ -25,7 +25,7 @@ def main():
         "--gpu-memory-utilization", "0.88", "--max-num-seqs", "16",
         "--enable-lora", "--max-lora-rank", "32", "--max-loras", "3",
         "--max-cpu-loras", str(max(3, len(args.adapter))), "--disable-log-requests",
-        "--generation-config", "vllm"]
+        "--generation-config", assets["generation_config"]]
     if args.adapter:
         command += ["--lora-modules"] + args.adapter
     atomic_json(RUNS / "logs" / f"server-config-{os.getenv('SLURM_JOB_ID', 'local')}-{args.port}.json",
