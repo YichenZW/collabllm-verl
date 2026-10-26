@@ -105,6 +105,11 @@ def main():
                 assert (checkpoint / "adapter_model.safetensors").is_file()
                 cfg = json.loads((checkpoint / "adapter_config.json").read_text())
                 assert cfg["r"] == 32
+                if variant != "released":
+                    view = RUNS / "checkpoints" / task / variant
+                    view.parent.mkdir(parents=True, exist_ok=True)
+                    if not view.exists():
+                        view.symlink_to(checkpoint, target_is_directory=True)
                 adapters.append(dict(dataset=task, variant=variant, path=str(checkpoint),
                     config_sha256=sha(checkpoint / "adapter_config.json"),
                     bytes=(checkpoint / "adapter_model.safetensors").stat().st_size,
@@ -147,6 +152,12 @@ def main():
         comparison="Qwen fixed first 200 math / 200 code / 100 writing; published adapter is separate, not assigned an inferred training stage.",
         historical_generation="Keep original Llama vLLM auto generation config, 16384 context, deterministic per-turn seed; old source and new source recorded separately.",
         original_results_modified=False, paid_requests_dispatched=0)
+    if (RUNS / "plan.json").exists():
+        previous_plan = json.loads((RUNS / "plan.json").read_text())
+        assert previous_plan["scope"] == plan["scope"]
+        for key in ["status", "budget_authorization", "jobs", "source_commit", "completed_at", "completed_artifact"]:
+            if key in previous_plan:
+                plan[key] = previous_plan[key]
     atomic_json(RUNS / "plan.json", plan)
     atomic_json(RUNS / "seed_audit.json", dict(sources=sources, original_dialogues_changed=0,
                                               input_prefix_matches_qwen=True))
