@@ -23,12 +23,11 @@ from dotenv import load_dotenv
 from nltk.translate.bleu_score import sentence_bleu
 from openai import OpenAI
 
-from collabllm.utils.extract_json_reliable import extract_json
 from reproduction.common import ROOT, RUNS, TASKS, atomic_json, chat_text, digest, legacy_prompt, source_identity
 from reproduction.budget import metered_call, BudgetExceeded
-from reproduction.response_schema import validate_payload
 from reproduction.code_executor import harness_identity, run_check
 from reproduction.code_reference_policy import reviewed_reference_issue
+from reproduction.evaluation_recovery import parse_response, check_candidate
 from reproduction.judge_protocol import VERSION, wrap_json_prompt, score_params, load_score, save_score, apply_score
 
 def main():
@@ -64,7 +63,8 @@ def main():
             "reproduction/budget.py", "reproduction/response_schema.py", "reproduction/check_code.py",
             "reproduction/code_executor.py", "reproduction/code_runtime.py", "reproduction/code_network.py",
             "reproduction/code_dependencies.py", "reproduction/code_reference_policy.py",
-            "reproduction/code_reference_issues.json", "reproduction/judge_protocol.py")))
+            "reproduction/code_reference_issues.json", "reproduction/judge_protocol.py",
+            "reproduction/evaluation_recovery.py")))
     manifest = dict(vars(args), user_model=user_model, protocol="d573e49",
                     test_sha256=digest(records), judge_changed_from_paper=True,
                     itr_scaling="(raw_score - 2.5) * 2", bleu="character-level NLTK sentence_bleu")
@@ -136,7 +136,7 @@ def main():
                     f.write(json.dumps(dict(kind=kind, model=model, scoring_protocol=VERSION,
                         resolved_model=getattr(resp, "model", model), usage=usage)) + "\n")
             try:
-                payload = validate_payload(extract_json(text), kind, args.dataset)
+                payload = parse_response(text, kind, args.dataset)
                 if model.startswith("claude"):
                     params = dict(model=model, max_tokens=4096, temperature=0,
                                   messages=[dict(role="user", content=prompt)])
@@ -253,11 +253,13 @@ def main():
                 issue = reviewed_reference_issue(gt, gold)
                 if not gold["pass_rate"] and not issue:
                     raise RuntimeError("Canonical code failed; repair evaluation environment before scoring this sample")
-                result = check(answer)
+                result = check_candidate(check, answer, harness_identity())
                 metrics["pass_rate"] = result["pass_rate"]
                 state["code_result"] = result["result"]
                 state["code_harness"] = result["harness"]
                 state["code_reference_issue"] = issue
+                if "outer_timeout_seconds" in result:
+                    state["code_outer_timeout_seconds"] = result["outer_timeout_seconds"]
         state.update(metrics=metrics, completed=True)
         atomic_json(target, state)
         print(json.dumps(dict(index=row["index"], **metrics)), flush=True)

@@ -111,6 +111,8 @@ def main():
         "裁判为 Claude Sonnet 4.5，替代论文的 Claude 3.5；使用原代码提示词、轮数、用户模拟模型和字符 BLEU。"
         "生成采用 vLLM，训练沿用 BF16 / 现代 TRL，因此不能宣称与论文运行条件完全一致。"
         "单次对话与单次训练种子的差异不代表统计上确定的优势。", "",
+        "生成代码超过既有 300 秒外层执行上限时，在标准答案通过验证后计为失败（0 分），"
+        "并在样本中记录 code_outer_timeout_seconds；不移除该题，也不修改原始测试断言。", "",
         "代码测试与 Qwen 使用相同的执行器版本和原始断言。训练数据重叠的敏感性结果及配对检验见 "
         "`statistical_analysis.json`；公开 checkpoint 的训练数据来源不能由该重叠检查推断。", "",
         f"本轮 API 已结算加保留金额：OpenAI ${b['providers']['openai']['committed_usd']:.4f} / $53，"

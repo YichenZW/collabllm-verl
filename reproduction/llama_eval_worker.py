@@ -51,6 +51,11 @@ def main():
                 return
             time.sleep(30)
         raise RuntimeError("Worker stopped before completion; inspect saved state before resuming")
+    except BaseException as exc:
+        atomic_json(RUNS / "progress.json", dict(status="failed", updated=time.time(),
+            job=os.getenv("SLURM_JOB_ID"), error=f"{type(exc).__name__}: {exc}",
+            budget=budget.status()))
+        raise
     finally:
         (lock / "owner.json").unlink(missing_ok=True)
         lock.rmdir()
