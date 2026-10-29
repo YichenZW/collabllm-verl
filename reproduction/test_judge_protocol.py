@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 from typing import Any, Union
 
 from reproduction import judge_protocol as protocol, qwen3_batch as batch
-from reproduction.common import LEGACY, TASKS, digest, legacy_prompt
+from reproduction.common import BASE, LEGACY, TASKS, digest, legacy_prompt
 
 
 def test_archived_claude_wrapper_is_exact_request_oracle():
@@ -42,8 +42,11 @@ def test_same_dialogue_in_two_stages_is_only_charged_once(tmp_path, monkeypatch)
         directory = root / "math-hard/base"
         (directory / "samples").mkdir(parents=True)
         (directory / "manifest.json").write_text(json.dumps(dict(dataset="math-hard", judge=batch.MODEL,
-            underlying_model="Qwen/Qwen3-4B", scoring_protocol=protocol.VERSION)))
+            underlying_model=BASE, scoring_protocol=protocol.VERSION)))
         (directory / "samples/0001.json").write_text(json.dumps(sample))
+    assert list(batch.candidates(roots, [])) == []
+    for root in roots:
+        (root / "math-hard/base/generation_complete.json").write_text(json.dumps(dict(status="complete")))
     requests = list(batch.candidates(roots, []))
     assert len(requests) == 1
     assert requests[0]["params"]["messages"][0]["content"].startswith(protocol.CLAUDE_PREFIX)

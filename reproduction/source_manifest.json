@@ -1,0 +1,17 @@
+{
+  "upstream": "https://github.com/Wuyxin/collabllm",
+  "upstream_checkout": "7378aab4efb1168557e72699cc51aebb5b8bc656",
+  "paper_source": {
+    "commit": "d573e4949abdc301cb2b630525c593cc432e94b8",
+    "tag": "paper-original-d573e49"
+  },
+  "experiment_snapshots": {
+    "reproduce/table1": "1b80789befb3d35072a6b4eaf17212616b6621dc",
+    "reproduce/qwen3-4b-table1": "04b9e63591daf51181f85c518ce0aa536fbbfdb5",
+    "reproduce/llama-eval-200-200-100": "05e3153833889f12c4978ae2b874a289e37763c3"
+  },
+  "publication_branch": "reproduce/release",
+  "publication_base": "05e3153833889f12c4978ae2b874a289e37763c3",
+  "full_online_training_status": "deferred",
+  "report_repository": "https://github.com/YichenZW/human-llm-collab-rl-overleaf"
+}

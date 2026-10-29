@@ -1,5 +1,9 @@
 # CollabLLM: From Passive Responders to Active Collaborators  
 
+> **Reproduction code:** see [REPRODUCTION.md](REPRODUCTION.md) for the Llama-3.1-8B
+> and Qwen3-4B experiment branches, pinned source revisions, environments, and
+> evaluation entry points. The upstream project description follows below.
+
 <div align="left">
 
 [![](https://img.shields.io/badge/Website-CollabLLM-purple?style=plastic&logo=Google%20Chrome)](http://aka.ms/CollabLLM)
