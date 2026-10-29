@@ -1,0 +1,20 @@
+{
+  "source_commit": "98fb181bb8975e638a3e13925d38ca4cb3453479",
+  "recovery_tag": "legacy-pre-verl-2026-10-28",
+  "layout": "reference_only_restore_tag_for_original_layout",
+  "moved_paths": {
+    "scripts": "archive/legacy/scripts",
+    "reproduction": "archive/legacy/reproduction",
+    "notebook_tutorials": "archive/legacy/notebook_tutorials",
+    "requirements.txt": "archive/legacy/requirements.txt",
+    "transparency_document.pdf": "archive/legacy/transparency_document.pdf",
+    "README.md": "archive/legacy/README.md",
+    "REPRODUCTION.md": "archive/legacy/REPRODUCTION.md"
+  },
+  "copied_paths": {
+    "pyproject.toml": "archive/legacy/pyproject.toml"
+  },
+  "retained_test_copy": {
+    "reproduction/test_regressions.py": "tests/test_shared_components.py"
+  }
+}

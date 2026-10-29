@@ -30,7 +30,6 @@ dependencies = [
     "tokenizers",
     "torch",
     "tqdm",
-    "trl>0.18",
     "transformers",
     "vllm>=0.9",
     "wandb",
@@ -57,4 +56,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["collabllm*", "collabllm/*"]
-exclude = ["notebook_tutorials", "outputs", "wandb"]
+exclude = ["archive*", "tests*", "notebook_tutorials", "outputs", "wandb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["archive", ".git", ".venv", ".venv-code", ".venv-ppo"]

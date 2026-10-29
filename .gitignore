@@ -9,6 +9,7 @@ dist
 .venv-ppo/
 .pytest_cache/
 reproduction/results/
+archive/legacy/reproduction/results/
 # Local links to the unchanged, pinned CollabLLM environments.
 .venv
 .venv-code
